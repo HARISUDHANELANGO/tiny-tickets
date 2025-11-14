@@ -1,0 +1,42 @@
+name: Azure Static Web Apps CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [ main ]
+
+jobs:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || 
+        (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy static Angular build to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_SALMON_ROCK_08A479500 }}
+          action: upload
+
+          # 🚀 This must point to the folder containing index.html
+          app_location: "web/dist/web/browser"
+
+          # 🚫 DO NOT let Azure build anything
+          skip_app_build: true
+
+          api_location: ""        # You don't have a backend inside SWA
+          skip_api_build: true
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_SALMON_ROCK_08A479500 }}
+          action: close

@@ -1,0 +1,37 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: tinytickets_db
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+
+  api:
+    build:
+      context: ./TinyTickets.Api
+      dockerfile: Dockerfile
+    container_name: tinytickets_api
+    depends_on:
+      - db
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=db,1433;Database=TinyTicketsDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True;
+      - ASPNETCORE_URLS=http://+:8080
+    ports:
+      - "5080:8080"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: tinytickets_web
+    depends_on:
+      - api
+    ports:
+      - "4200:80"
+
+volumes:
+  sqldata:

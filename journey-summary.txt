@@ -1,0 +1,255 @@
+# TinyTickets — Journey Summary (Minimalistic)
+
+## 🎯 Goal
+Create a tiny full-stack app using Angular + .NET + SQL + Docker to master real-world DevOps fundamentals.
+
+---
+
+## 🧩 Key Problems We Encountered
+
+### 1. Visual Studio API launch issues  
+IIS Express failed — switched to Kestrel profiles → fixed.
+
+### 2. Folder mismatch & Dockerfile COPY failures  
+Renamed folder still showed "WebApplication1".  
+Fixed structure → corrected Dockerfile paths.
+
+### 3. Angular container only showed Nginx homepage  
+Angular v17+ changed dist path.  
+Corrected to: `dist/web/browser`.
+
+### 4. Persistent CORS errors  
+Not a CORS issue — API was crashing.  
+Root cause: SQL login failure.
+
+### 5. SQL Server “Login failed for user 'sa'”  
+Database did not exist inside container.  
+Solution: automatic EF Core migrations on startup.
+
+### 6. EF tools missing inside container  
+Image used only runtime — no SDK.  
+Solved by removing need for EF tools entirely.
+
+---
+
+## 🚀 Final Working Architecture
+
+- Angular served via Nginx  
+- .NET API running in container on port 8080  
+- SQL Server (db) container accessed as `Server=db,1433`  
+- Automatic migrations create DB + tables  
+- Angular talks to API @ `http://localhost:5080/tickets`  
+- Everything wired through `docker-compose.yml`
+
+---
+
+## 🎉 Outcome
+A clean, production-inspired containerized full-stack environment:
+
+✔ Angular → API → SQL communication  
+✔ Zero CORS issues  
+✔ Auto DB creation  
+✔ Stable Docker builds  
+✔ All components running together smoothly  
+
+You now fully understand **Docker networking, containerized APIs, SQL hosting, Angular dist deployment, and CORS logic**.
+
+=========================================================================================================================
+===============================================Azure Only Journey========================================================
+=========================================================================================================================
+
+🌩️ TinyTickets — Azure Journey Log (Minimalistic & Chronological)
+🎯 Purpose
+
+Document every Azure-related step, issue, and fix we performed from Level 4 → start of Level 5.
+
+1️⃣ Initial Azure Goal
+
+Deploy the Angular frontend + .NET backend + DB to Azure:
+
+Angular → Azure Static Web Apps
+
+API → Azure App Service
+
+DB → Azure SQL
+
+CI/CD → GitHub Actions
+
+2️⃣ Azure SQL Setup
+✓ Actions Performed
+
+Created Azure SQL server & database.
+
+Configured firewall rules:
+
+Allowed Azure services
+
+Added local IP for initial migration test
+
+Generated connection string.
+
+🔧 Roadblocks
+
+EF Core migrations not applied to Azure SQL
+→ Solved by running API locally with the Azure SQL connection string, allowing migrations to auto-run.
+
+App Service failing due to connection string not found
+→ Added connection string under Configuration → Connection Strings (not App Settings).
+
+3️⃣ Azure App Service (Backend Deployment)
+✓ Actions Performed
+
+Created App Service with .NET 8 runtime.
+
+Connected GitHub repo.
+
+App Service deployment succeeded.
+
+Added:
+
+ASPNETCORE_ENVIRONMENT=Production
+
+Connection string (Database)
+
+🔧 Roadblocks
+
+HTTP 500 on app load
+Cause: API could not connect to Azure SQL.
+Fix: Corrected connection string in App Service settings.
+
+CORS blocking calls from Angular
+Cause: App Service CORS allowed only *.
+Fix: Added Static Web App domain explicitly.
+
+4️⃣ Azure Static Web Apps (Frontend Deployment)
+✓ Actions Performed
+
+Created Azure Static Web App.
+
+Connected GitHub repo.
+
+Basic YAML generated.
+
+🔧 Major Multi-Day Roadblocks
+🚨 R1: Oryx forcing Node 18 → Angular 20 build fails
+
+Error:
+
+Node.js version v18.20.8 detected. Angular CLI requires Node v20+
+
+
+Caused by Azure using its own build system.
+
+✔ Fix:
+
+Overrode build in GitHub Actions:
+
+Installed Node 20 manually
+
+Ran npm install + npm run build manually
+
+Added skip_app_build: true
+
+🚨 R2: Azure could not find index.html
+
+Error:
+
+Failed to find default file in app artifacts folder
+
+Root Cause:
+
+Angular 20 dist =
+
+web/dist/web/browser/index.html
+
+
+but SWA looked at:
+
+web/
+
+✔ Fix:
+
+Set:
+
+app_location: "/"
+app_artifact_location: "web/dist/web/browser"
+
+🚨 R3: Static Web App token mismatch
+
+When recreating SWA, old token → pipeline fails.
+
+✔ Fix: Added new token to GitHub secrets and updated YAML.
+
+🚨 R4: Dist folder missing in GitHub workspace
+
+YAML was building Angular but the path expected by SWA was wrong.
+
+✔ Fix:
+Ensured:
+
+working-directory: ./web
+npm run build
+
+
+and dist was generated in correct place.
+
+🚨 R5: GitHub Actions ignoring our artifact path
+
+At one stage, Azure ignored app_artifact_location.
+
+✔ Fix:
+Cleaned YAML completely and wrote a minimal version:
+
+- uses: Azure/static-web-apps-deploy@v1
+  with:
+    app_location: "/"
+    skip_app_build: true
+    app_artifact_location: "web/dist/web/browser"
+
+
+This was the winning configuration.
+
+🚨 R6: Angular environment still pointing to localhost
+
+UI loaded on Azure but calls API on localhost.
+
+✔ Fix:
+Changed environment.ts → production.apiUrl = App Service URL.
+
+Rebuilt & redeployed.
+
+🚨 R7: App Service CORS mismatch
+
+SWA domain was not allowed → 403.
+
+✔ Fix:
+Under App Service → CORS:
+
+Added SWA URL
+
+Disabled * wildcard for production safety.
+
+5️⃣ Current Status (Before Level 5)
+✔ Angular hosted on Azure Static Web App
+✔ API hosted on Azure App Service
+✔ Azure SQL DB connected & working
+✔ End-to-end cloud flow working
+✔ GitHub Actions CI/CD stable
+
+We now have a production-like 3-tier Azure deployment.
+
+6️⃣ You Learned (So Far)
+
+How Oryx works and how to bypass it
+
+Advanced SWA artifact path debugging
+
+Fixing Node version issues in CI/CD
+
+Azure SQL firewall + connection strings
+
+App Service CORS management
+
+Environment-based API routing
+
+Full GitHub Actions build pipeline design

@@ -1,0 +1,17 @@
+<div style="padding:2rem;max-width:600px;margin:auto;">
+  <h2>TinyTickets 🎟️</h2>
+
+  <form (submit)="$event.preventDefault(); create()" style="margin-bottom:1rem;">
+    <input placeholder="Title" [(ngModel)]="title" name="title" required />
+    <button type="submit">Add</button>
+  </form>
+
+  <ul>
+    <li *ngFor="let t of tickets">
+      #{{t.id}} – {{t.title}}
+      <button (click)="publish(t.id)" style="margin-left:10px;">
+        Publish Event
+      </button>
+    </li>
+  </ul>
+</div>
