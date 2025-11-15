@@ -121,6 +121,22 @@ namespace WebApplication1
                 return Results.Ok(new { status = "published" });
             });
 
+            app.MapPost("/send-bus", async (IConfiguration config) =>
+            {
+                string cs = config["ServiceBus:ConnectionString"]
+                    ?? Environment.GetEnvironmentVariable("ServiceBus__ConnectionString");
+
+                var client = new ServiceBusClient(cs);
+                var sender = client.CreateSender("ticket-events");
+
+                await sender.SendMessageAsync(
+                    new ServiceBusMessage($"Hello from API @ {DateTime.Now}")
+                );
+
+                return Results.Ok("Message pushed to queue!");
+            });
+
+
             app.Run();
 
         }

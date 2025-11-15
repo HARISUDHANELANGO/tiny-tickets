@@ -555,3 +555,13 @@ TinyTickets.Api/Properties/PublishProfiles/FolderProfile.pubxml.user
 /.vs/tiny-tickets/FileContentIndex
 /TinyTickets.Worker
 /web/.vscode
+TinyTickets.Api/bin/Release/net8.0/Azure.Core.Amqp.dll
+TinyTickets.Api/bin/Release/net8.0/Azure.Messaging.ServiceBus.dll
+TinyTickets.Api/bin/Release/net8.0/Microsoft.Azure.Amqp.dll
+TinyTickets.Api/bin/Release/net8.0/publish/Azure.Core.Amqp.dll
+TinyTickets.Api/bin/Release/net8.0/publish/Azure.Messaging.ServiceBus.dll
+TinyTickets.Api/bin/Release/net8.0/publish/Microsoft.Azure.Amqp.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/Azure.Core.Amqp.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/Azure.Messaging.ServiceBus.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/Microsoft.Azure.Amqp.dll
+TinyTickets.Api/.config/dotnet-tools.json
