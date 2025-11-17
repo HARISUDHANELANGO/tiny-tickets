@@ -1,9 +1,10 @@
-
 using Azure.Messaging.ServiceBus;
+using Azure.Storage.Blobs;
+using Azure.Storage.Sas;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
-using TinyTickets.Api.Controllers;
 using TinyTickets.Api.Data;
+using TinyTickets.Api.Models;
 using TinyTickets.Api.Services;
 
 namespace WebApplication1
@@ -14,13 +15,7 @@ namespace WebApplication1
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            //builder.Services.AddCors(o =>
-            //    o.AddPolicy("AllowClient", 
-            //        p => p
-            //        .AllowAnyOrigin()
-            //        .AllowAnyHeader()
-            //        .AllowAnyMethod()));
-
+            // CORS
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowTinyTicketsUi", policy =>
@@ -32,19 +27,15 @@ namespace WebApplication1
                 });
             });
 
-            // Connection string
-            //var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-            //                      ?? "Server=(localdb)\\MSSQLLocalDB;Database=TinyTicketsDb;Trusted_Connection=True;";
+            // SQL Connection
+            var sql = builder.Configuration.GetConnectionString("DefaultConnection")
+                      ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
 
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-                                    ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
-                                    ?? "Server=(localdb)\\MSSQLLocalDB;Database=TinyTicketsDb;Trusted_Connection=True;";
+            builder.Services.AddDbContext<AppDbContext>(opt =>
+                opt.UseSqlServer(sql));
 
-
-            builder.Services.AddDbContext<AppDbContext>(options =>
-                options.UseSqlServer(connectionString));
-
-            builder.Services.AddSingleton<ServiceBusClient>(provider =>
+            // Service Bus
+            builder.Services.AddSingleton<ServiceBusClient>(_ =>
             {
                 var cs = builder.Configuration["ServiceBus:ConnectionString"]
                          ?? Environment.GetEnvironmentVariable("ServiceBus__ConnectionString")
@@ -58,102 +49,94 @@ namespace WebApplication1
                 var client = provider.GetRequiredService<ServiceBusClient>();
                 return client.CreateSender("ticket-events");
             });
-            builder.Services.AddSingleton<SasTokenService>();
 
+            // Blob SAS Services
+            builder.Services.AddSingleton<SasTokenService>();
+            builder.Services.AddSingleton<SasReadService>();
 
             var app = builder.Build();
-            //app.UseCors();
 
+            // DB Migration
             using (var scope = app.Services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 db.Database.Migrate();
             }
 
-            var tickets = new List<object>();
-            var id = 1;
-
-            //app.MapGet("/tickets", () => tickets);
-            //app.MapPost("/tickets", (JsonElement body) =>
-            //{
-            //    var title = body.GetProperty("title").GetString() ?? "Untitled";
-            //    var item = new { id = id++, title };
-            //    tickets.Add(item);
-            //    return Results.Ok(item);
-            //});
-
-
-            // Map endpoints
             app.UseCors("AllowTinyTicketsUi");
+            app.MapControllers();
+
+            // --------------------- TICKETS ---------------------
+
             app.MapGet("/tickets", async (AppDbContext db) =>
                 await db.Tickets.ToListAsync());
 
             app.MapPost("/tickets", async (AppDbContext db, Ticket body, ServiceBusSender sender) =>
             {
-                // 1. Save to SQL
                 db.Tickets.Add(body);
                 await db.SaveChangesAsync();
 
-                // 2. Publish to Service Bus
-                var payload = JsonSerializer.Serialize(body);
-                var msg = new ServiceBusMessage(payload)
+                await sender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(body))
                 {
                     ContentType = "application/json"
-                };
+                });
 
-                await sender.SendMessageAsync(msg);
-
-                // 3. Return result
                 return Results.Ok(body);
             });
 
-            app.MapPost("/tickets/{id}/publish", async (int id, AppDbContext db, ServiceBusSender sender) =>
-            {
-                var ticket = await db.Tickets.FindAsync(id);
-                if (ticket == null)
-                    return Results.NotFound();
+            // --------------------- STORAGE ---------------------
 
-                var json = JsonSerializer.Serialize(ticket);
-                var message = new ServiceBusMessage(json)
-                {
-                    ContentType = "application/json"
-                };
-
-                await sender.SendMessageAsync(message);
-
-                return Results.Ok(new { status = "published" });
-            });
-
-            app.MapPost("/send-bus", async (IConfiguration config) =>
-            {
-                string cs = config["ServiceBus:ConnectionString"]
-                    ?? Environment.GetEnvironmentVariable("ServiceBus__ConnectionString");
-
-                var client = new ServiceBusClient(cs);
-                var sender = client.CreateSender("ticket-events");
-
-                await sender.SendMessageAsync(
-                    new ServiceBusMessage($"Hello from API @ {DateTime.Now}")
-                );
-
-                return Results.Ok("Message pushed to queue!");
-            });
-
+            // SAS Upload URL API
             app.MapPost("/storage/sas-upload", (SasRequest req, SasTokenService sas) =>
             {
-                var sasUrl = sas.GenerateUploadSas(req.Container, req.FileName);
+                string sasUrl = sas.GenerateUploadSas(req.Container, req.FileName);
                 return Results.Ok(new { uploadUrl = sasUrl });
             });
 
-            app.MapPost("/storage/sas-read", (SasRequest req, SasTokenService sas) =>
+            // SAS Read URL API
+            app.MapPost("/storage/sas-read", (StorageSasReadRequest req, IConfiguration config) =>
             {
-                var sasUrl = sas.GenerateReadSas(req.Container, req.FileName);
-                return Results.Ok(new { readUrl = sasUrl });
+                string conn = config.GetConnectionString("StorageAccount")
+                             ?? Environment.GetEnvironmentVariable("StorageAccount__ConnectionString");
+
+                var blobService = new BlobServiceClient(conn);
+                var container = blobService.GetBlobContainerClient(req.Container);
+                var blob = container.GetBlobClient(req.FileName);
+
+                var sas = blob.GenerateSasUri(BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddMinutes(10));
+                return Results.Ok(new { url = sas.ToString() });
             });
 
+            // Save Metadata in SQL
+            app.MapPost("/storage/save-metadata", async (UploadedFile file, AppDbContext db) =>
+            {
+                db.UploadedFiles.Add(file);
+                await db.SaveChangesAsync();
+
+                return Results.Ok(file);
+            });
+
+            // List Files
+            app.MapGet("/storage/files", async (AppDbContext db, SasReadService sas) =>
+            {
+                var items = await db.Files
+                    .OrderByDescending(x => x.UploadedOn)
+                    .ToListAsync();
+
+                var results = items.Select(x => new
+                {
+                    x.Id,
+                    x.FileName,
+                    x.BlobName,
+                    x.ContentType,
+                    x.UploadedOn,
+                    Url = sas.GetReadUrl("ticket-images", x.BlobName) // FIXED
+                });
+
+                return Results.Ok(results);
+            });
 
             app.Run();
-
         }
     }
 }

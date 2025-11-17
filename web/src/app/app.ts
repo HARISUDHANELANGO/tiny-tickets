@@ -6,6 +6,15 @@ import { environment } from '../environments/environment.prod';
 
 type Ticket = { id: number; title: string };
 
+export interface UploadedFile {
+  id: number;
+  fileName: string;
+  blobName: string;
+  contentType: string;
+  uploadedOn: string;
+  url: string;
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -13,69 +22,96 @@ type Ticket = { id: number; title: string };
   templateUrl: './app.html',
 })
 export class AppComponent {
+
   private http = inject(HttpClient);
   apiBase = environment.apiUrl;
+
   tickets: Ticket[] = [];
   title = '';
-  selectedFile!: File;
+
+  files: UploadedFile[] = [];
+  selectedFile: File | null = null;
+
+  previewUrl = '';
 
   ngOnInit() {
-    this.load();
+    this.loadTickets();
+    this.loadFiles();
   }
 
-  load() {
+  // -------------------------------
+  // TICKETS
+  // -------------------------------
+
+  loadTickets() {
     this.http.get<Ticket[]>(`${this.apiBase}/tickets`)
-      .subscribe(x => this.tickets = x);
+      .subscribe(res => this.tickets = res);
   }
 
   create() {
     if (!this.title.trim()) return;
+
     this.http.post(`${this.apiBase}/tickets`, { title: this.title })
       .subscribe(() => {
         this.title = '';
-        this.load();
+        this.loadTickets();
       });
   }
 
   publish(id: number) {
     this.http.post(`${this.apiBase}/tickets/${id}/publish`, {})
-      .subscribe(() => {
-        console.log("Event published from UI");
-      });
+      .subscribe(() => console.log("Event published from UI"));
   }
 
+  // -------------------------------
+  // FILE UPLOAD + LIST
+  // -------------------------------
+
   onFileSelected(event: any) {
-    const file = event.target.files[0];
-    if (file) {
-      this.selectedFile = file;
-      this.uploadFile();
-    }
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    this.selectedFile = file;
+    this.uploadFile();
   }
 
   uploadFile() {
     if (!this.selectedFile) return;
 
-    const fileName = `${crypto.randomUUID()}_${this.selectedFile.name}`;
+    const blobName = `${crypto.randomUUID()}_${this.selectedFile.name}`;
+    const container = "ticket-images";
 
-    // 1 — Get SAS URL from API
-    this.http.post<any>(`${this.apiBase}/storage/sas-upload`, {
-      container: "temp",
-      fileName: fileName
-    }).subscribe(async (res) => {
-      const sasUrl = res.uploadUrl;
+    // 1 — Ask backend for SAS upload URL
+    this.http.post<{ uploadUrl: string }>(
+      `${this.apiBase}/storage/sas-upload`,
+      { container, fileName: blobName }
+    )
+    .subscribe(async (res) => {
 
-      // 2 — Upload directly to blob storage
-      await fetch(sasUrl, {
+      // 2 — Upload directly to Blob using SAS
+      await fetch(res.uploadUrl, {
         method: "PUT",
-        headers: {
-          "x-ms-blob-type": "BlockBlob"
-        },
+        headers: { "x-ms-blob-type": "BlockBlob" },
         body: this.selectedFile
       });
 
-      console.log("File uploaded:", sasUrl.split("?")[0]);
       alert("Upload Successful!");
+
+      // 3 — Refresh UI
+      this.loadFiles();
+      this.selectedFile = null;
     });
   }
 
+  loadFiles() {
+  this.http.get<UploadedFile[]>(`${this.apiBase}/storage/files`)
+    .subscribe(res => {
+      this.files = res;
+    });
+}
+
+
+  preview(url: string) {
+    this.previewUrl = url;
+  }
 }
