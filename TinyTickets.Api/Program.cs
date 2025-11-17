@@ -64,7 +64,6 @@ namespace WebApplication1
             }
 
             app.UseCors("AllowTinyTicketsUi");
-            app.MapControllers();
 
             // --------------------- TICKETS ---------------------
 
