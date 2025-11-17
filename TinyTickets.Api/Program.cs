@@ -2,6 +2,7 @@
 using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using TinyTickets.Api.Controllers;
 using TinyTickets.Api.Data;
 using TinyTickets.Api.Services;
 
@@ -136,6 +137,18 @@ namespace WebApplication1
                 );
 
                 return Results.Ok("Message pushed to queue!");
+            });
+
+            app.MapPost("/storage/sas-upload", (SasRequest req, SasTokenService sas) =>
+            {
+                var sasUrl = sas.GenerateUploadSas(req.Container, req.FileName);
+                return Results.Ok(new { uploadUrl = sasUrl });
+            });
+
+            app.MapPost("/storage/sas-read", (SasRequest req, SasTokenService sas) =>
+            {
+                var sasUrl = sas.GenerateReadSas(req.Container, req.FileName);
+                return Results.Ok(new { readUrl = sasUrl });
             });
 
 
