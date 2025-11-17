@@ -565,3 +565,17 @@ TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/Azure.Core.Amqp.dll
 TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/Azure.Messaging.ServiceBus.dll
 TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/Microsoft.Azure.Amqp.dll
 TinyTickets.Api/.config/dotnet-tools.json
+TinyTickets.Api/bin/Debug/net8.0/Azure.Storage.Blobs.dll
+TinyTickets.Api/bin/Debug/net8.0/Azure.Storage.Common.dll
+TinyTickets.Api/bin/Debug/net8.0/System.IO.Hashing.dll
+TinyTickets.Api/obj/Debug/net8.0/ApiEndpoints.json
+TinyTickets.Api/obj/Debug/net8.0/TinyTickets.Api.csproj.BuildWithSkipAnalyzers
+TinyTickets.Api/bin/Release/net8.0/Azure.Storage.Blobs.dll
+TinyTickets.Api/bin/Release/net8.0/Azure.Storage.Common.dll
+TinyTickets.Api/bin/Release/net8.0/System.IO.Hashing.dll
+TinyTickets.Api/bin/Release/net8.0/publish/Azure.Storage.Blobs.dll
+TinyTickets.Api/bin/Release/net8.0/publish/Azure.Storage.Common.dll
+TinyTickets.Api/bin/Release/net8.0/publish/System.IO.Hashing.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/Azure.Storage.Blobs.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/Azure.Storage.Common.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/System.IO.Hashing.dll

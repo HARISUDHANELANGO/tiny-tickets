@@ -1,0 +1,406 @@
+✅ FULL AZURE SERVICE BUS + DOCKER + ACR + CONTAINER APPS DOCUMENTATION
+(Actual technical description, no analogies)
+1️⃣ Purpose of the Entire Architecture
+
+Before diving into individual components, understand the big problem we solved:
+
+We built a production-grade event-driven architecture that mirrors how modern distributed systems work in top companies.
+
+The complete workflow:
+
+Angular SPA → API → SQL
+                ↓
+        Azure Service Bus
+                ↓
+        Container Apps Worker
+
+
+This enables:
+
+Decoupled communication
+
+Asynchronous processing
+
+Retry/resiliency
+
+Scalability
+
+Real microservices behaviour
+
+2️⃣ Each Azure Component — Purpose and Role
+
+This is the missing detailed mapping you asked for.
+
+🟦 2.1 Azure Static Web Apps (Angular Frontend)
+Purpose
+
+Host your Angular 20 front-end globally with:
+
+Built-in CDN
+
+Automatic HTTPS
+
+GitHub CI/CD
+
+Free TLS certificates
+
+How it fits
+
+It calls:
+
+GET /tickets
+POST /tickets
+POST /publish-test
+
+
+All requests go to TinyTickets API (App Service).
+
+🟩 2.2 Azure App Service (TinyTickets API)
+Purpose
+
+Host your .NET 9 minimal API with:
+
+Auto-scaling
+
+Connection to Azure SQL
+
+Reads env variables for Service Bus
+
+Publishes messages to the queue
+
+How it fits
+
+App service does TWO jobs:
+
+Synchronous web requests (CRUD tickets)
+
+Publish asynchronous events to Service Bus
+
+API writes:
+
+To SQL DB
+
+To Service Bus Queue (for background processing)
+
+🟧 2.3 Azure SQL Database
+Purpose
+
+Store persistent data (Tickets).
+Handles:
+
+EF migrations
+
+Permanent storage
+
+Querying for frontend
+
+How it fits
+
+API reads/writes to SQL.
+Worker does NOT access SQL.
+
+Database responsibility: strictly persistence.
+
+🟥 2.4 Azure Service Bus (Namespace + Queue)
+Purpose
+
+Provide reliable, transactional message delivery between API and Worker.
+
+Why Service Bus was needed (real-world reasons):
+
+Use Cases
+
+Background processing
+
+Out-of-order workloads
+
+Event-driven workflows
+
+When system A must not wait for system B
+
+Retry + guarantee delivery required
+
+Decouple API from slow operations
+
+Prevent overloading downstream services
+
+Multi-application enterprise architecture
+
+Typical scenarios:
+
+Payment processing
+
+Email/SMS notifications
+
+Order pipelines
+
+Invoice generation
+
+Image/video processing
+
+Audit log archiving
+
+Your project represented the smallest possible real version of this pattern.
+
+How it fits
+
+API publishes messages to queue:
+
+ServiceBusClient -> sender.SendMessageAsync
+
+
+Worker consumes messages:
+
+ServiceBusProcessor -> ProcessMessageAsync
+
+🟫 2.5 Docker (Worker Image Build)
+Purpose
+
+Package the worker code + runtime into a reproducible, isolated container.
+
+Why Docker is essential:
+
+Worker must run identically locally & in Azure
+
+Azure Container Apps only accepts container images
+
+Reproducible deployments
+
+Clear separation between API (App Service) and Worker (Container App)
+
+How it fits
+
+You built a .NET 9 Worker Service → created a container image using:
+
+docker build -t tinytickets-worker:latest .
+
+💠 2.6 Azure Container Registry (ACR)
+Purpose
+
+Store Docker images securely so Azure can pull them.
+
+Why ACR is required:
+
+Container Apps does NOT use Docker Hub by default
+
+You need secure image pulls
+
+Azure-managed identity integration
+
+Geo-replication for large apps
+
+Versioned deployment support
+
+How it fits
+
+Your image:
+
+tinyticketsregistry.azurecr.io/tinytickets-worker:latest
+
+
+Stored in ACR after:
+
+docker push
+
+
+Worker Container App pulls this image from ACR every time you deploy.
+
+🟪 2.7 Azure Container Apps Environment
+Purpose
+
+A shared network boundary for all Container Apps.
+Defines:
+
+Logs
+
+Networking
+
+Storage
+
+Ingress
+
+Internal service communication
+
+How it fits
+
+Your worker app lives inside this environment.
+
+Everything inside this environment can share:
+
+VNet
+
+Secrets
+
+Configurations
+
+Scaling rules
+
+🟫 2.8 Azure Container App (Worker)
+Purpose
+
+Run your worker container continuously.
+
+Responsibilities:
+
+Listen to Service Bus queue
+
+Process messages
+
+Log output
+
+Auto-restart on failure
+
+Scale up/down
+
+Why we didn’t use Azure Container Apps Jobs
+
+Jobs no longer support Service Bus queue triggers (2024–2025 update).
+So we created a long-running worker container instead.
+
+This is actually the more realistic enterprise pattern.
+
+3️⃣ Exact End-to-End Flow You Built
+
+Step by step:
+
+1. Angular → API
+
+User clicks “Add Ticket”.
+
+2. API writes Ticket to SQL
+
+EF Core → Azure SQL DB.
+
+3. API publishes event to Service Bus Queue
+
+Using:
+
+ServiceBusClient.SendMessageAsync()
+
+4. Worker receives message
+
+Container App Worker pulls messages:
+
+ProcessMessageAsync()
+
+5. Worker processes message
+
+Logs:
+
+Processing event: <data>
+
+6. Messages disappear from queue
+
+Because worker completes them.
+
+4️⃣ ALL ISSUES ENCOUNTERED AND RESOLVED
+
+This is the "impediments" section you requested.
+
+🛑 Issue 1 — ACR login failed
+
+Cause: Docker Desktop not installed
+Fix: Install Docker Desktop → restart engine
+
+🛑 Issue 2 — Worker container .NET version mismatch
+
+Cause: Wrong Docker base image
+Fix: Change Dockerfile to .NET 9 compatible image tags
+
+🛑 Issue 3 — API showing 500 errors with no details
+
+Cause: App Service hides exceptions in browser
+Fix: Use App Service Log Stream
+
+🛑 Issue 4 — API cannot find Service Bus connection string
+
+Cause: Added to "Connection Strings" instead of "Application Settings"
+Fix: Moved to:
+
+ServiceBus__ConnectionString
+
+🛑 Issue 5 — Worker continuously crashing
+
+Cause: Env variable name mismatch
+Fix: Update Container App → add correct secret name
+
+🛑 Issue 6 — Container Apps Jobs failed
+
+Cause: New Azure update disallowed Service Bus Queue triggers
+Fix: Use a regular Container App (always-running worker)
+
+🛑 Issue 7 — Unable to see events in queue
+
+Cause: Worker consumed them immediately
+Fix: Check Worker logs, use Peek to view
+
+5️⃣ WHEN SHOULD YOU USE AZURE SERVICE BUS IN REAL PROJECTS?
+
+These are the exact interview explanations.
+
+Use Service Bus when:
+
+✔ 1. You need guaranteed delivery
+
+Even if the consumer is offline.
+
+✔ 2. Producer and consumer must be decoupled
+
+API should never depend on Worker uptime.
+
+✔ 3. Long-running background tasks
+
+Processing images, PDFs, emails, reports.
+
+✔ 4. High volume workloads
+
+Thousands of events per second that must not overwhelm API.
+
+✔ 5. Transactional behaviour is needed
+
+E.g., publish message only if DB operation succeeded.
+
+✔ 6. Retry, dead-letter, and ordering matter
+
+Service Bus supports:
+
+DLQ
+
+Sessions
+
+Scheduled messages
+
+Auto-retry
+
+✔ 7. Enterprise multi-service architecture
+
+Integrating:
+
+Payments
+
+Notifications
+
+Inventory
+
+CRM
+
+Analytics
+
+Service Bus acts as the “message spine.”
+
+6️⃣ Your Architecture Matches Real Enterprise Standards
+
+Here is what you achieved:
+
+✔ Event-driven microservices
+✔ Asynchronous decoupling
+✔ Reliable messaging
+✔ Worker containerization
+✔ Distributed components
+✔ Queue-trigger processing
+✔ ACR–Docker–ContainerApps pipeline
+✔ Cloud-native secrets & configuration
+✔ API + Worker separation (best practice)
+✔ Production logging and debugging
+
+This is exactly what high-paying companies test in system design + cloud interviews.

@@ -17,6 +17,7 @@ export class AppComponent {
   apiBase = environment.apiUrl;
   tickets: Ticket[] = [];
   title = '';
+  selectedFile!: File;
 
   ngOnInit() {
     this.load();
@@ -41,6 +42,40 @@ export class AppComponent {
       .subscribe(() => {
         console.log("Event published from UI");
       });
+  }
+
+  onFileSelected(event: any) {
+    const file = event.target.files[0];
+    if (file) {
+      this.selectedFile = file;
+      this.uploadFile();
+    }
+  }
+
+  uploadFile() {
+    if (!this.selectedFile) return;
+
+    const fileName = `${crypto.randomUUID()}_${this.selectedFile.name}`;
+
+    // 1 — Get SAS URL from API
+    this.http.post<any>(`${this.apiBase}/storage/sas-upload`, {
+      container: "temp",
+      fileName: fileName
+    }).subscribe(async (res) => {
+      const sasUrl = res.uploadUrl;
+
+      // 2 — Upload directly to blob storage
+      await fetch(sasUrl, {
+        method: "PUT",
+        headers: {
+          "x-ms-blob-type": "BlockBlob"
+        },
+        body: this.selectedFile
+      });
+
+      console.log("File uploaded:", sasUrl.split("?")[0]);
+      alert("Upload Successful!");
+    });
   }
 
 }

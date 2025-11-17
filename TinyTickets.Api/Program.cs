@@ -3,6 +3,7 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using TinyTickets.Api.Data;
+using TinyTickets.Api.Services;
 
 namespace WebApplication1
 {
@@ -56,6 +57,7 @@ namespace WebApplication1
                 var client = provider.GetRequiredService<ServiceBusClient>();
                 return client.CreateSender("ticket-events");
             });
+            builder.Services.AddSingleton<SasTokenService>();
 
 
             var app = builder.Build();
