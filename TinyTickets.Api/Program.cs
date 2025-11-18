@@ -15,7 +15,9 @@ namespace WebApplication1
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // --------------------------------------------------------
             // CORS
+            // --------------------------------------------------------
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowTinyTicketsUi", policy =>
@@ -27,14 +29,18 @@ namespace WebApplication1
                 });
             });
 
-            // SQL Connection
+            // --------------------------------------------------------
+            // SQL
+            // --------------------------------------------------------
             var sql = builder.Configuration.GetConnectionString("DefaultConnection")
-                      ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+                    ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
 
             builder.Services.AddDbContext<AppDbContext>(opt =>
                 opt.UseSqlServer(sql));
 
+            // --------------------------------------------------------
             // Service Bus
+            // --------------------------------------------------------
             builder.Services.AddSingleton<ServiceBusClient>(_ =>
             {
                 var cs = builder.Configuration["ServiceBus:ConnectionString"]
@@ -50,89 +56,100 @@ namespace WebApplication1
                 return client.CreateSender("ticket-events");
             });
 
-            // Blob SAS Services
+            // --------------------------------------------------------
+            // SAS Services
+            // --------------------------------------------------------
             builder.Services.AddSingleton<SasTokenService>();
             builder.Services.AddSingleton<SasReadService>();
 
             var app = builder.Build();
 
-            // DB Migration
+            // Auto-migrations
             using (var scope = app.Services.CreateScope())
             {
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                db.Database.Migrate();
+                scope.ServiceProvider.GetRequiredService<AppDbContext>()
+                    .Database.Migrate();
             }
 
             app.UseCors("AllowTinyTicketsUi");
 
-            // --------------------- TICKETS ---------------------
-
+            // --------------------------------------------------------
+            // Ticket APIs
+            // --------------------------------------------------------
             app.MapGet("/tickets", async (AppDbContext db) =>
                 await db.Tickets.ToListAsync());
 
             app.MapPost("/tickets", async (AppDbContext db, Ticket body, ServiceBusSender sender) =>
             {
+                body.Title = body.Title.Trim();
                 db.Tickets.Add(body);
                 await db.SaveChangesAsync();
 
-                await sender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(body))
+                var msg = new ServiceBusMessage(JsonSerializer.Serialize(body))
                 {
                     ContentType = "application/json"
-                });
+                };
 
+                await sender.SendMessageAsync(msg);
                 return Results.Ok(body);
             });
 
-            // --------------------- STORAGE ---------------------
+            // --------------------------------------------------------
+            // Storage APIs
+            // --------------------------------------------------------
 
-            // SAS Upload URL API
+            // SAS Upload URL
             app.MapPost("/storage/sas-upload", (SasRequest req, SasTokenService sas) =>
             {
-                string sasUrl = sas.GenerateUploadSas(req.Container, req.FileName);
-                return Results.Ok(new { uploadUrl = sasUrl });
+                return Results.Ok(new { uploadUrl = sas.GenerateUploadSas(req.Container, req.FileName) });
             });
 
-            // SAS Read URL API
-            app.MapPost("/storage/sas-read", (StorageSasReadRequest req, IConfiguration config) =>
-            {
-                string conn = config.GetConnectionString("StorageAccount")
-                             ?? Environment.GetEnvironmentVariable("StorageAccount__ConnectionString");
-
-                var blobService = new BlobServiceClient(conn);
-                var container = blobService.GetBlobContainerClient(req.Container);
-                var blob = container.GetBlobClient(req.FileName);
-
-                var sas = blob.GenerateSasUri(BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddMinutes(10));
-                return Results.Ok(new { url = sas.ToString() });
-            });
-
-            // Save Metadata in SQL
+            // Save Metadata
             app.MapPost("/storage/save-metadata", async (UploadedFile file, AppDbContext db) =>
             {
+                file.UploadedOn = DateTime.UtcNow;
                 db.UploadedFiles.Add(file);
                 await db.SaveChangesAsync();
-
                 return Results.Ok(file);
             });
 
-            // List Files
+            // List
             app.MapGet("/storage/files", async (AppDbContext db, SasReadService sas) =>
             {
-                var items = await db.Files
-                    .OrderByDescending(x => x.UploadedOn)
-                    .ToListAsync();
+                var rows = await db.UploadedFiles.OrderByDescending(f => f.UploadedOn).ToListAsync();
 
-                var results = items.Select(x => new
+                var result = rows.Select(f => new
                 {
-                    x.Id,
-                    x.FileName,
-                    x.BlobName,
-                    x.ContentType,
-                    x.UploadedOn,
-                    Url = sas.GetReadUrl("ticket-images", x.BlobName) // FIXED
+                    f.Id,
+                    f.FileName,
+                    f.BlobName,
+                    f.ContentType,
+                    f.Size,
+                    f.UploadedOn,
+                    url = sas.GetReadUrl(f.Container, f.BlobName)
                 });
 
-                return Results.Ok(results);
+                return Results.Ok(result);
+            });
+
+            // Delete
+            app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db, IConfiguration config) =>
+            {
+                var file = await db.UploadedFiles.FindAsync(id);
+                if (file == null) return Results.NotFound();
+
+                var blobService = new BlobServiceClient(
+                    config.GetConnectionString("StorageAccount")
+                    ?? Environment.GetEnvironmentVariable("StorageAccount__ConnectionString")
+                );
+
+                var blob = blobService.GetBlobContainerClient(file.Container).GetBlobClient(file.BlobName);
+                await blob.DeleteIfExistsAsync();
+
+                db.UploadedFiles.Remove(file);
+                await db.SaveChangesAsync();
+
+                return Results.Ok(new { deleted = true });
             });
 
             app.Run();

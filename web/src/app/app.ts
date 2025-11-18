@@ -4,16 +4,17 @@ import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { environment } from '../environments/environment.prod';
 
-type Ticket = { id: number; title: string };
-
 export interface UploadedFile {
   id: number;
   fileName: string;
   blobName: string;
   contentType: string;
+  size: number;
   uploadedOn: string;
   url: string;
 }
+
+type Ticket = { id: number; title: string };
 
 @Component({
   selector: 'app-root',
@@ -32,8 +33,6 @@ export class AppComponent {
   files: UploadedFile[] = [];
   selectedFile: File | null = null;
 
-  previewUrl = '';
-
   ngOnInit() {
     this.loadTickets();
     this.loadFiles();
@@ -42,7 +41,6 @@ export class AppComponent {
   // -------------------------------
   // TICKETS
   // -------------------------------
-
   loadTickets() {
     this.http.get<Ticket[]>(`${this.apiBase}/tickets`)
       .subscribe(res => this.tickets = res);
@@ -60,15 +58,14 @@ export class AppComponent {
 
   publish(id: number) {
     this.http.post(`${this.apiBase}/tickets/${id}/publish`, {})
-      .subscribe(() => console.log("Event published from UI"));
+      .subscribe();
   }
 
   // -------------------------------
-  // FILE UPLOAD + LIST
+  // FILE UPLOAD
   // -------------------------------
-
-  onFileSelected(event: any) {
-    const file = event.target.files?.[0];
+  onFileSelected(e: any) {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     this.selectedFile = file;
@@ -78,40 +75,47 @@ export class AppComponent {
   uploadFile() {
     if (!this.selectedFile) return;
 
-    const blobName = `${crypto.randomUUID()}_${this.selectedFile.name}`;
+    const guid = crypto.randomUUID();
+    const blobName = `${guid}_${this.selectedFile.name}`;
     const container = "ticket-images";
 
-    // 1 — Ask backend for SAS upload URL
+    // 1 — Ask backend for SAS URL
     this.http.post<{ uploadUrl: string }>(
       `${this.apiBase}/storage/sas-upload`,
       { container, fileName: blobName }
-    )
-    .subscribe(async (res) => {
+    ).subscribe(async (res) => {
 
-      // 2 — Upload directly to Blob using SAS
+      // 2 — Upload file using SAS
       await fetch(res.uploadUrl, {
         method: "PUT",
         headers: { "x-ms-blob-type": "BlockBlob" },
         body: this.selectedFile
       });
 
-      alert("Upload Successful!");
+      // 3 — Save metadata
+      const meta = {
+        fileName: this.selectedFile!.name,
+        blobName,
+        contentType: this.selectedFile!.type,
+        size: this.selectedFile!.size,
+        container
+      };
 
-      // 3 — Refresh UI
-      this.loadFiles();
-      this.selectedFile = null;
+      this.http.post(`${this.apiBase}/storage/save-metadata`, meta)
+        .subscribe(() => this.loadFiles());
     });
   }
 
+  // -------------------------------
+  // FILE LIST
+  // -------------------------------
   loadFiles() {
-  this.http.get<UploadedFile[]>(`${this.apiBase}/storage/files`)
-    .subscribe(res => {
-      this.files = res;
-    });
-}
+    this.http.get<UploadedFile[]>(`${this.apiBase}/storage/files`)
+      .subscribe(res => this.files = res);
+  }
 
-
-  preview(url: string) {
-    this.previewUrl = url;
+  delete(id: number) {
+    this.http.delete(`${this.apiBase}/storage/files/${id}`)
+      .subscribe(() => this.loadFiles());
   }
 }

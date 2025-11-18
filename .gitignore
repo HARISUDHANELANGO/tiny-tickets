@@ -1745,3 +1745,16 @@ TinyTickets.Api/obj/Release/net8.0/win-x86/PubTmp/Out/web.config
 TinyTickets.Api/obj/Release/net8.0/win-x86/PubTmp/Out/WindowsBase.dll
 TinyTickets.Api/obj/Release/net8.0/win-x86/ref/TinyTickets.Api.dll
 TinyTickets.Api/obj/Release/net8.0/win-x86/refint/TinyTickets.Api.dll
+TinyTickets.Api/bin/Debug/net8.0/System.IO.Pipelines.dll
+TinyTickets.Api/bin/Debug/net8.0/System.Text.Encodings.Web.dll
+TinyTickets.Api/bin/Debug/net8.0/System.Text.Json.dll
+TinyTickets.Api/bin/Debug/net8.0/runtimes/browser/lib/net8.0/System.Text.Encodings.Web.dll
+TinyTickets.Api/bin/Release/net8.0/System.IO.Pipelines.dll
+TinyTickets.Api/bin/Release/net8.0/System.Text.Encodings.Web.dll
+TinyTickets.Api/bin/Release/net8.0/System.Text.Json.dll
+TinyTickets.Api/bin/Release/net8.0/publish/runtimes/browser/lib/net8.0/System.Text.Encodings.Web.dll
+TinyTickets.Api/bin/Release/net8.0/runtimes/browser/lib/net8.0/System.Text.Encodings.Web.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/System.IO.Pipelines.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/System.Text.Encodings.Web.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/System.Text.Json.dll
+TinyTickets.Api/obj/Release/net8.0/PubTmp/Out/runtimes/browser/lib/net8.0/System.Text.Encodings.Web.dll

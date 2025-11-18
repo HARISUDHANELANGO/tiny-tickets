@@ -8,6 +8,5 @@ namespace TinyTickets.Api.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
         public DbSet<Ticket> Tickets => Set<Ticket>();
         public DbSet<UploadedFile> UploadedFiles => Set<UploadedFile>();
-        public DbSet<FileMetadata> Files => Set<FileMetadata>();
     }
 }

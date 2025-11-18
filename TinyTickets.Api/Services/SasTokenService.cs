@@ -1,40 +1,31 @@
-﻿using Azure.Storage;
-using Azure.Storage.Blobs;
+﻿using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 
 namespace TinyTickets.Api.Services
 {
     public class SasTokenService
     {
-        private readonly string _connectionString;
+        private readonly string _conn;
 
         public SasTokenService(IConfiguration config)
         {
-            _connectionString =
+            _conn =
                 config.GetConnectionString("StorageAccount")
                 ?? Environment.GetEnvironmentVariable("StorageAccount__ConnectionString")
                 ?? throw new Exception("Storage connection string missing");
         }
 
-        /// <summary>
-        /// Generate a SAS URL that allows Angular to upload directly to Blob Storage (PUT).
-        /// </summary>
-        public string GenerateUploadSas(string containerName, string fileName)
+        public string GenerateUploadSas(string containerName, string blobName)
         {
-            var blobService = new BlobServiceClient(_connectionString);
-            var container = blobService.GetBlobContainerClient(containerName);
-            var blob = container.GetBlobClient(fileName);
-
-            // Make sure container exists
+            var service = new BlobServiceClient(_conn);
+            var container = service.GetBlobContainerClient(containerName);
             container.CreateIfNotExists();
 
-            // SAS: PUT block blob
+            var blob = container.GetBlobClient(blobName);
+
             var sas = blob.GenerateSasUri(
-                permissions: BlobSasPermissions.Create |
-                             BlobSasPermissions.Write |
-                             BlobSasPermissions.Add,
-                expiresOn: DateTimeOffset.UtcNow.AddMinutes(15)
-            );
+                BlobSasPermissions.Create | BlobSasPermissions.Write,
+                DateTimeOffset.UtcNow.AddMinutes(15));
 
             return sas.ToString();
         }
