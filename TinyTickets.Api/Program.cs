@@ -132,25 +132,7 @@ namespace WebApplication1
                 return Results.Ok(result);
             });
 
-            // Delete
-            app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db, IConfiguration config) =>
-            {
-                var file = await db.UploadedFiles.FindAsync(id);
-                if (file == null) return Results.NotFound();
-
-                var blobService = new BlobServiceClient(
-                    config.GetConnectionString("StorageAccount")
-                    ?? Environment.GetEnvironmentVariable("StorageAccount__ConnectionString")
-                );
-
-                var blob = blobService.GetBlobContainerClient(file.Container).GetBlobClient(file.BlobName);
-                await blob.DeleteIfExistsAsync();
-
-                db.UploadedFiles.Remove(file);
-                await db.SaveChangesAsync();
-
-                return Results.Ok(new { deleted = true });
-            });
+            // Delete            
 
             app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db, IConfiguration config) =>
             {
