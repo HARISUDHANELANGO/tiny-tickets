@@ -57,10 +57,6 @@
 
         <a [href]="f.url" download class="download-link">Download</a>
         <button class="delete-btn" (click)="delete(f.id)">Delete</button>
-        <button class="download-btn" (click)="downloadReport()">
-          Download PDF Report
-        </button>
-
       </div>
     </div>
 
@@ -68,6 +64,9 @@
       <p class="empty">No files uploaded yet.</p>
     </ng-template>
 
+    <button class="download-btn" (click)="downloadReport()">
+      Download PDF Report
+    </button>
   </section>
 
 
