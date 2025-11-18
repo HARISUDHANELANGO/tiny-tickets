@@ -57,6 +57,10 @@
 
         <a [href]="f.url" download class="download-link">Download</a>
         <button class="delete-btn" (click)="delete(f.id)">Delete</button>
+        <button class="download-btn" (click)="downloadReport()">
+          Download PDF Report
+        </button>
+
       </div>
     </div>
 
@@ -155,13 +159,21 @@
       background: #d9534f;
       color: white;
       border: none;
-      padding: 5px 10px;
+      padding: 10px 10px;
       border-radius: 4px;
       cursor: pointer;
     }
     .delete-btn:hover {
       background: #b52b27;
     }
+    .download-btn {
+      background: #0078d4;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
   </style>
-
 </div>

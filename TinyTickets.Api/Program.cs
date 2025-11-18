@@ -2,10 +2,15 @@ using Azure.Messaging.ServiceBus;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection.Metadata;
 using System.Text.Json;
 using TinyTickets.Api.Data;
 using TinyTickets.Api.Models;
 using TinyTickets.Api.Services;
+using QuestPDF.Fluent;
+using QuestPDF.Infrastructure;
+using QuestPDF.Helpers;
+
 
 namespace WebApplication1
 {
@@ -159,6 +164,51 @@ namespace WebApplication1
                 return Results.Ok(new { deleted = true, id = entry.Id });
             });
 
+            app.MapGet("/storage/files/report/pdf", async (AppDbContext db) =>
+            {
+                var files = await db.UploadedFiles
+                    .OrderByDescending(f => f.UploadedOn)
+                    .ToListAsync();
+
+                var pdf = QuestPDF.Fluent.Document.Create(container =>
+                {
+                    container.Page(page =>
+                    {
+                        page.Margin(20);
+                        page.Header().Text("TinyTickets File Report").FontSize(20).SemiBold();
+                        page.Content().Table(table =>
+                        {
+                            table.ColumnsDefinition(cols =>
+                            {
+                                cols.RelativeColumn(3); // Name
+                                cols.RelativeColumn(2); // Type
+                                cols.RelativeColumn(1); // Size
+                                cols.RelativeColumn(2); // Date
+                            });
+
+                            // Header row
+                            table.Header(header =>
+                            {
+                                header.Cell().Text("File Name").SemiBold();
+                                header.Cell().Text("Content Type").SemiBold();
+                                header.Cell().Text("Size").SemiBold();
+                                header.Cell().Text("Uploaded On").SemiBold();
+                            });
+
+                            // Rows
+                            foreach (var f in files)
+                            {
+                                table.Cell().Text(f.FileName);
+                                table.Cell().Text(f.ContentType);
+                                table.Cell().Text($"{(f.Size / 1024.0):0.0} KB");
+                                table.Cell().Text(f.UploadedOn.ToString("yyyy-MM-dd HH:mm"));
+                            }
+                        });
+                    });
+                }).GeneratePdf();
+
+                return Results.File(pdf, "application/pdf", "TinyTickets_File_Report.pdf");
+            });
 
             app.Run();
         }
