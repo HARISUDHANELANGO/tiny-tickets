@@ -12,8 +12,8 @@ using TinyTickets.Api.Data;
 namespace TinyTickets.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251117180233_AddUploadedFiles")]
-    partial class AddUploadedFiles
+    [Migration("20251118093251_Init")]
+    partial class Init
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -50,13 +50,24 @@ namespace TinyTickets.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("BlobName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Container")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ContentType")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime>("UploadedOn")
                         .HasColumnType("datetime2");
