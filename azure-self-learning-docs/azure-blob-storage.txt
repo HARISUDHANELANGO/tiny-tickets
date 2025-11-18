@@ -1,0 +1,291 @@
+🧭 TINY TICKETS — AZURE BLOB STORAGE JOURNEY SHEET
+
+Your complete architectural + implementation + troubleshooting narrative
+
+1. Objective
+
+Enable secure, scalable, cost-efficient file uploads, previews, downloads, and metadata management using Azure Blob Storage, integrated seamlessly with Angular + .NET 8 + SQL Server.
+
+Goal: No file passes through API → Use SAS token for efficiency & security.
+
+2. Architecture Overview
+Frontend → SAS API → Blob Upload → Metadata Save → SQL → SAS Read URL → UI
+Angular (File)  
+    → /storage/sas-upload  
+        → Generate SAS WRITE token  
+            → Angular PUT upload directly to Blob  
+                → /storage/save-metadata  
+                    → SQL insert  
+                        → /storage/files  
+                            → SAS READ URL  
+                                → Preview / Download UI  
+
+
+Key decisions:
+
+Direct upload using SAS → avoids API streaming, scalable.
+
+Metadata stored in SQL → avoids expensive blob listing.
+
+Short-lived SAS tokens → secure, no credential leaks.
+
+3. Implementation Summary
+✔ Containers created
+
+ticket-images
+
+Auto-creation enabled via CreateIfNotExists().
+
+✔ SAS Upload URL (Write permissions)
+
+Blob-specific SAS token
+
+15-minute validity
+
+BlockBlob upload enforced
+
+No account key exposed to client.
+
+✔ Direct upload from Angular
+
+fetch(PUT)
+
+Header: x-ms-blob-type: BlockBlob
+
+File streaming handled entirely on client-side.
+
+✔ Metadata saved in SQL
+
+Model: UploadedFile
+
+Fields:
+
+FileName
+
+BlobName
+
+ContentType
+
+Size
+
+UploadedOn
+
+Container
+
+✔ File listing API
+
+DB rows sorted by UploadedOn
+
+SAS read URL generated per item
+
+Angular preview supports images
+
+Download URL uses temporary SAS
+
+✔ File deletion end-to-end
+
+Angular delete
+
+API delete by ID
+
+Blob deleted
+
+SQL row removed
+
+Duplicate endpoint conflict resolved
+
+✔ PDF reporting (optional)
+
+Implemented using QuestPDF
+
+License configuration fixed
+
+4. Problems You Faced — And How You Solved Them
+
+This section is your interview weapon.
+Demonstrates maturity, debugging skills, and architectural understanding.
+
+Issue 1: Missing Storage Connection String in Local Debugging
+
+Symptoms:
+API threw "Storage connection string missing".
+
+Root cause:
+Different env variable names on:
+
+local machine
+
+Azure portal
+
+appsettings.json
+
+Fix:
+Updated SAS services to search BOTH:
+
+config.GetConnectionString("StorageAccount")
+|| Environment.GetEnvironmentVariable("StorageAccount__ConnectionString")
+
+
+✔ Works in local + Azure hosting.
+
+Issue 2: System.Memory.Data Not Found
+
+Symptoms:
+Unhandled exception during container creation.
+
+Root cause:
+Azure client libraries updated, missing dependency restored.
+
+Fix:
+Added correct NuGet version + redeployed.
+
+Issue 3: Duplicate Table & EF Migration Failures
+
+Symptoms:
+
+Cannot drop column
+
+Cannot drop table
+
+Cannot recreate Tickets
+
+DB state mismatched with code
+
+Root cause:
+Multiple model classes for files (FileMetadata, UploadedFile, plus old Files table).
+
+Fix:
+
+Deleted rogue model
+
+Cleaned DbContext
+
+Generated migration
+
+Dropped old tables manually
+
+Re-ran Add-Migration + Update-Database
+
+✔ Database stabilized
+✔ Clean schema in sync with code
+
+Issue 4: Duplicate DELETE endpoint
+
+Error:
+
+AmbiguousMatchException: Multiple endpoints matched: DELETE /storage/files/{id}
+
+
+Cause:
+Two delete routes defined accidentally after code restructuring.
+
+Fix:
+Removed duplicate – only one delete route now.
+
+Issue 5: Metadata DB table not updated
+
+Cause:
+BlobName, Size, ContentType missing in DB after migration clash.
+
+Fix:
+Rebuilt entire migration cleanly.
+
+Issue 6: QuestPDF Runtime Exception
+
+Cause:
+QuestPDF now enforces license selection.
+
+Fix:
+Set:
+
+QuestPDF.Settings.License = LicenseType.Community;
+
+
+✔ PDF generation now stable.
+
+5. Learnings (Your Interview-Level Takeaways)
+A. SAS Token is the safest and fastest way to handle uploads
+
+No direct API upload → avoids heavy memory usage
+
+No need for streaming controllers
+
+Angular talks directly to Azure Storage
+
+Highly scalable pattern (what enterprises use)
+
+B. Never expose Storage Account Keys
+
+→ SAS tokens give only scoped, temporary access
+→ Using full access keys in UI is a critical security violation
+
+C. EF Migrations must be kept clean
+
+Multiple models = multiple tables
+
+Azure SQL won’t allow dropping system tables
+
+Always validate schema before deployment
+
+D. Read access must also use SAS tokens
+
+Never expose blobs publicly
+
+SAS URL with short expiry = best practice
+
+E. Deleting blob + metadata must be atomic
+
+You implemented:
+
+Get metadata
+
+Remove blob
+
+Remove row
+
+Return success
+
+Clean and production-grade.
+
+F. When debugging Azure App Service
+
+Log stream instantly reveals:
+
+missing assemblies
+
+incorrect runtimeconfig
+
+migration errors
+
+missing environment variables
+
+6. Completed Feature Matrix
+Feature	Status
+Create Container	✅
+SAS Upload Token	✅
+Direct Upload from Angular	✅
+Save Metadata	✅
+SQL Table for Files	✅
+SAS Read Token	✅
+File Preview	✅
+File Download	✅
+File Deletion	✅
+EF Migrations Stabilized	✅
+PDF Export	✅
+Drag & Drop	Optional
+Storage Cleanup	Optional
+File Validation	Optional
+CDN	Optional advanced
+
+🎯 Goal → Upload → Store → Serve → Delete
+
+1) Angular selects file
+2) Ask API → "Give SAS upload URL"
+3) API creates SAS (Write-only)
+4) Angular uploads directly to Blob (PUT)
+5) Angular tells API → "Save metadata"
+6) API saves record in SQL
+7) Angular loads list → API fetches SQL rows
+8) API adds SAS Read URL per file
+9) Angular previews/downloads using SAS
+10) User deletes → API removes blob + SQL row
