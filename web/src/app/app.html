@@ -56,6 +56,7 @@
              class="preview-img"/>
 
         <a [href]="f.url" download class="download-link">Download</a>
+        <button class="delete-btn" (click)="delete(f.id)">Delete</button>
       </div>
     </div>
 
@@ -149,6 +150,17 @@
 
     .download-link:hover {
       text-decoration: underline;
+    }
+    .delete-btn {
+      background: #d9534f;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .delete-btn:hover {
+      background: #b52b27;
     }
   </style>
 

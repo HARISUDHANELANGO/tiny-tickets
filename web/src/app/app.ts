@@ -115,7 +115,12 @@ export class AppComponent {
   }
 
   delete(id: number) {
-    this.http.delete(`${this.apiBase}/storage/files/${id}`)
-      .subscribe(() => this.loadFiles());
-  }
+  if (!confirm("Delete this file permanently?")) return;
+
+  this.http.delete(`${this.apiBase}/storage/files/${id}`)
+    .subscribe(() => {
+      this.files = this.files.filter(f => f.id !== id);
+    });
+}
+
 }

@@ -152,6 +152,32 @@ namespace WebApplication1
                 return Results.Ok(new { deleted = true });
             });
 
+            app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db, IConfiguration config) =>
+            {
+                var entry = await db.UploadedFiles.FindAsync(id);
+                if (entry == null)
+                    return Results.NotFound(new { message = "File not found" });
+
+                // Blob client
+                var blobService = new BlobServiceClient(
+                    config.GetConnectionString("StorageAccount")
+                    ?? Environment.GetEnvironmentVariable("StorageAccount__ConnectionString")
+                );
+
+                var container = blobService.GetBlobContainerClient(entry.Container);
+                var blob = container.GetBlobClient(entry.BlobName);
+
+                // Delete from Blob
+                await blob.DeleteIfExistsAsync();
+
+                // Delete from SQL
+                db.UploadedFiles.Remove(entry);
+                await db.SaveChangesAsync();
+
+                return Results.Ok(new { deleted = true, id = entry.Id });
+            });
+
+
             app.Run();
         }
     }
