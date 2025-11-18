@@ -18,6 +18,9 @@ namespace WebApplication1
     {
         public static void Main(string[] args)
         {
+            QuestPDF.Settings.License = LicenseType.Community;
+            QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
+
             var builder = WebApplication.CreateBuilder(args);
 
             // --------------------------------------------------------
