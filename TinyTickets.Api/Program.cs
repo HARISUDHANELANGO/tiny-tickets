@@ -209,4 +209,12 @@ app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db) =>
     return Results.Ok(new { deleted = true });
 }).RequireAuthorization("ApiScope");
 
+app.Use(async (ctx, next) =>
+{
+    Console.WriteLine("AUTHENTICATED: " + ctx.User.Identity?.IsAuthenticated);
+    foreach (var c in ctx.User.Claims)
+        Console.WriteLine($"{c.Type} = {c.Value}");
+
+    await next();
+});
 app.Run();
