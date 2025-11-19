@@ -116,6 +116,7 @@ namespace WebApplication1
             // --------------------------------------------------------
             // Authentication & Authorization Middleware
             // --------------------------------------------------------
+            app.UseHttpsRedirection();
             app.UseAuthentication();
             app.UseAuthorization();
 
