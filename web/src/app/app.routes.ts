@@ -1,8 +1,7 @@
 import { Routes } from '@angular/router';
-import { MsalGuard } from '@azure/msal-angular';
-
 import { LoginComponent } from '../login/login';
 import { AppComponent } from './app';
+import { authGuard } from '../services/auth.guard';
 
 export const routes: Routes = [
   {
@@ -12,8 +11,8 @@ export const routes: Routes = [
 
   {
     path: '',
-    canActivate: [MsalGuard],
     component: AppComponent,
+    canActivate: [authGuard], // <–– NEW custom guard
   },
 
   {

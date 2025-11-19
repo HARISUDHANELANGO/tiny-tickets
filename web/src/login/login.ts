@@ -5,6 +5,7 @@ import {
   AuthenticationResult,
   AccountInfo,
 } from '@azure/msal-browser';
+import { msalInstance } from '../config/msal.config';
 
 @Component({
   selector: 'app-login',
@@ -14,14 +15,7 @@ import {
   styleUrls: ['./login.scss'],
 })
 export class LoginComponent {
-  private msal = new PublicClientApplication({
-    auth: {
-      clientId: 'd754916c-6408-4ecd-9dfd-68d64993ecae',
-      authority:
-        'https://login.microsoftonline.com/0784cbd8-29cf-49ad-ae0e-4ebd47bf32d1',
-      redirectUri: 'https://salmon-rock-08a479500.3.azurestaticapps.net',
-    },
-  });
+  private msal = msalInstance;
 
   user: AccountInfo | null = null;
 
