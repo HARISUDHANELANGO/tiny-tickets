@@ -20,9 +20,6 @@ export const appConfig: ApplicationConfig = {
     // 🔥 HTTP + Azure AD Token Injection
     provideHttpClient(withInterceptors([msalInterceptor])),
 
-    // 🔥 MUST: enable all routes (login + main)
-    provideRouter(routes),
-
     // 🔥 Provide global MSAL instance for the entire app
     { provide: 'MSAL_INSTANCE', useValue: msalInstance },
   ],
