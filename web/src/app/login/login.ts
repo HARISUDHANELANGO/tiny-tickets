@@ -11,6 +11,6 @@ export class LoginComponent {
   constructor(private auth: AuthService) {}
 
   login() {
-    this.auth.login(); // 🔥 Triggers MSAL Redirect
+    this.auth.login();
   }
 }
