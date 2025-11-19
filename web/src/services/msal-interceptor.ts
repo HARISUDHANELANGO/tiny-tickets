@@ -7,7 +7,7 @@ import { protectedResources } from '../config/msal.config';
 export const msalInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
 
-  return from(auth.getToken(protectedResources.tinyTicketsApi.scopes)).pipe(
+  return from(auth.getToken()).pipe(
     switchMap((res) => {
       if (res?.accessToken) {
         req = req.clone({
