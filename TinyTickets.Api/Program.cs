@@ -25,7 +25,7 @@ namespace WebApplication1
             var builder = WebApplication.CreateBuilder(args);
 
             // --------------------------------------------------------
-            // Load Key Vault — MUST be before reading secrets
+            // Load Key Vault ï¿½ MUST be before reading secrets
             // --------------------------------------------------------
             var kvUrl = builder.Configuration["KeyVaultUrl"];
 
@@ -93,6 +93,18 @@ namespace WebApplication1
 
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+
+            // Configure JwtBearerOptions AFTER handler registration
+            builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+            {
+                options.RequireHttpsMetadata = false;
+
+                options.TokenValidationParameters.ValidAudience =
+                    builder.Configuration["AzureAd:ClientId"];
+
+                options.TokenValidationParameters.ValidIssuer =
+                    $"{builder.Configuration["AzureAd:Instance"]}{builder.Configuration["AzureAd:TenantId"]}/v2.0";
+            });
 
             builder.Services.AddAuthorization(options =>
             {

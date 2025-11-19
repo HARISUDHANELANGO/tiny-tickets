@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../environments/environment';
+import { AuthService } from '../../services/auth.service';
 
 export interface UploadedFile {
   id: number;
@@ -27,6 +28,7 @@ interface Ticket {
   styleUrls: ['./home.scss'],
 })
 export class HomeComponent {
+  constructor(private auth: AuthService) {}
   private http = inject(HttpClient);
   apiBase = environment.apiUrl;
 
@@ -147,5 +149,9 @@ export class HomeComponent {
         a.click();
         URL.revokeObjectURL(url);
       });
+  }
+
+  logout() {
+    this.auth.logout();
   }
 }

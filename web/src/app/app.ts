@@ -20,7 +20,7 @@ type Ticket = { id: number; title: string };
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterOutlet],
   templateUrl: './app.html',
 })
 export class AppComponent {
