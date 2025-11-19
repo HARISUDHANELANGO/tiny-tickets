@@ -1,13 +1,12 @@
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from './auth.service';
-import { msalInstance } from '../config/msal.config';
 
 export function authGuard() {
   const auth = inject(AuthService);
   const router = inject(Router);
 
-  // prevent guard from triggering login during redirect
+  // block guard during MSAL redirect callback
   if (
     sessionStorage.getItem('msal.interaction.status') ===
     'interaction_in_progress'

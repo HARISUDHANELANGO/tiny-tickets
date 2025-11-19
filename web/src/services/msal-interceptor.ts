@@ -1,13 +1,13 @@
 import { inject } from '@angular/core';
 import { HttpInterceptorFn } from '@angular/common/http';
 import { AuthService } from './auth.service';
-import { protectedResources, msalInstance } from '../config/msal.config';
+import { protectedResources } from '../config/msal.config';
 import { from, switchMap } from 'rxjs';
 
 export const msalInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
 
-  // Skip token injection during redirect
+  // Skip all token work during redirect
   if (
     sessionStorage.getItem('msal.interaction.status') ===
     'interaction_in_progress'
@@ -18,6 +18,7 @@ export const msalInterceptor: HttpInterceptorFn = (req, next) => {
   const isApiCall = req.url.startsWith(
     protectedResources.tinyTicketsApi.endpoint
   );
+
   if (!isApiCall) return next(req);
 
   return from(auth.getToken(protectedResources.tinyTicketsApi.scopes)).pipe(

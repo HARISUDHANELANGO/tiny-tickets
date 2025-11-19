@@ -11,12 +11,10 @@ export const msalConfig = {
       'https://login.microsoftonline.com/0784cbd8-29cf-49ad-ae0e-4ebd47bf32d1',
     redirectUri: window.location.origin,
   },
-
   cache: {
     cacheLocation: BrowserCacheLocation.LocalStorage,
     storeAuthStateInCookie: false,
   },
-
   system: {
     loggerOptions: {
       logLevel: LogLevel.Warning,

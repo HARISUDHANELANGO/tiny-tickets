@@ -20,17 +20,16 @@ export class AuthService {
 
   async getToken(scopes: string[]) {
     const acct = this.getAccount();
+    if (!acct) return this.login();
 
-    if (!acct) {
-      return this.login();
-    }
-
+    // silent first
     try {
       return await msalInstance.acquireTokenSilent({
-        scopes,
         account: acct,
+        scopes,
       });
     } catch {
+      // fallback redirect
       return msalInstance.acquireTokenRedirect({ scopes });
     }
   }
