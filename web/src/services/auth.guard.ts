@@ -7,13 +7,17 @@ export function authGuard() {
   const auth = inject(AuthService);
   const router = inject(Router);
 
-  // 🔥 DO NOT LOGIN while MSAL is handling redirect
-  const interactionStatus = sessionStorage.getItem('msal.interaction.status');
-  if (interactionStatus === 'interaction_in_progress') {
+  // prevent guard from triggering login during redirect
+  if (
+    sessionStorage.getItem('msal.interaction.status') ===
+    'interaction_in_progress'
+  ) {
     return false;
   }
 
-  if (auth.isLoggedIn()) return true;
+  if (auth.isLoggedIn()) {
+    return true;
+  }
 
   auth.login();
   return false;
