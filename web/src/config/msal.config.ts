@@ -8,18 +8,14 @@ export const msalConfig = {
   auth: {
     clientId: 'd754916c-6408-4ecd-9dfd-68d64993ecae',
     authority:
-      'https://login.microsoftonline.com/0784cbd8-29cf-49ad-ae0e-4ebd47bf32d1',
+      'https://login.microsoftonline.com/0784cbd8-29cf-49ad-ae0e-4ebd47bf32d1/v2.0',
     redirectUri: window.location.origin,
+    navigateToLoginRequestUrl: false,
   },
+
   cache: {
     cacheLocation: BrowserCacheLocation.LocalStorage,
     storeAuthStateInCookie: false,
-  },
-  system: {
-    loggerOptions: {
-      logLevel: LogLevel.Warning,
-      loggerCallback: () => {},
-    },
   },
 };
 

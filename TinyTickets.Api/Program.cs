@@ -13,7 +13,7 @@ using QuestPDF.Infrastructure;
 var builder = WebApplication.CreateBuilder(args);
 
 // --------------------------------------------------------
-// QuestPDF Setup
+// QuestPDF
 // --------------------------------------------------------
 QuestPDF.Settings.License = LicenseType.Community;
 QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
@@ -22,39 +22,40 @@ QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
 // Load Key Vault
 // --------------------------------------------------------
 var vaultUrl = builder.Configuration["KeyVaultUrl"];
-if (!string.IsNullOrWhiteSpace(vaultUrl))
+if (!string.IsNullOrEmpty(vaultUrl))
 {
     builder.Configuration.AddAzureKeyVault(
         new Uri(vaultUrl),
-        new DefaultAzureCredential()
-    );
+        new DefaultAzureCredential());
 }
 
 // --------------------------------------------------------
-// Load secrets
+// Load Secrets
 // --------------------------------------------------------
 var sqlConn = builder.Configuration["SqlConnectionString"];
 var sbConn = builder.Configuration["ServiceBusConnectionString"];
 var blobConn = builder.Configuration["StorageAccountConnectionString"];
+
 var tenantId = builder.Configuration["AzureAd:TenantId"];
 var instance = builder.Configuration["AzureAd:Instance"];
-var apiAudience = builder.Configuration["AzureAd:Audience"];
+var audience = builder.Configuration["AzureAd:Audience"];
+// Should be: api://f2cea967-6192-44ae-aedc-1e6b6a994e5e
 
 // --------------------------------------------------------
-// SQL
+// DB
 // --------------------------------------------------------
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseSqlServer(sqlConn));
+builder.Services.AddDbContext<AppDbContext>(o =>
+    o.UseSqlServer(sqlConn));
 
 // --------------------------------------------------------
 // Service Bus
 // --------------------------------------------------------
 builder.Services.AddSingleton(new ServiceBusClient(sbConn));
-builder.Services.AddSingleton(provider =>
-    provider.GetService<ServiceBusClient>()!.CreateSender("ticket-events"));
+builder.Services.AddSingleton(p =>
+    p.GetRequiredService<ServiceBusClient>().CreateSender("ticket-events"));
 
 // --------------------------------------------------------
-// Blob Services
+// Blob
 // --------------------------------------------------------
 builder.Services.AddSingleton<SasTokenService>();
 builder.Services.AddSingleton<SasReadService>();
@@ -62,44 +63,48 @@ builder.Services.AddSingleton<SasReadService>();
 // --------------------------------------------------------
 // CORS
 // --------------------------------------------------------
-builder.Services.AddCors(options =>
+builder.Services.AddCors(o =>
 {
-    options.AddPolicy("AllowTinyTicketsUi", policy =>
-        policy.WithOrigins("https://salmon-rock-08a479500.3.azurestaticapps.net")
-              .AllowAnyHeader()
-              .AllowAnyMethod());
+    o.AddPolicy("AllowTinyTicketsUi", p =>
+        p.WithOrigins("https://salmon-rock-08a479500.3.azurestaticapps.net")
+         .AllowAnyHeader()
+         .AllowAnyMethod());
 });
 
 // --------------------------------------------------------
-// Azure AD Authentication
+// Azure AD Auth
 // --------------------------------------------------------
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer(o =>
     {
-        options.Authority = $"{instance}{tenantId}/v2.0";
+        o.Authority = $"{instance}{tenantId}/v2.0";
 
-        options.TokenValidationParameters = new TokenValidationParameters
+        o.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateAudience = true,
-            ValidAudience = apiAudience,   // Required
             ValidateIssuer = true,
-            ValidIssuer = $"{instance}{tenantId}/v2.0",
+            ValidIssuers = new[]
+            {
+                $"{instance}{tenantId}/v2.0",
+                $"https://sts.windows.net/{tenantId}/"
+            },
+
+            ValidateAudience = true,
+            ValidAudience = audience,
+
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(2)
         };
-
-        options.RequireHttpsMetadata = true;
     });
 
 // --------------------------------------------------------
 // Authorization
 // --------------------------------------------------------
-builder.Services.AddAuthorization(options =>
+builder.Services.AddAuthorization(o =>
 {
-    options.AddPolicy("ApiScope", policy =>
+    o.AddPolicy("ApiScope", p =>
     {
-        policy.RequireAuthenticatedUser();
-        policy.RequireClaim("scp", "access_as_user");
+        p.RequireAuthenticatedUser();
+        p.RequireClaim("scp", "access_as_user");
     });
 });
 
@@ -111,11 +116,11 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     scope.ServiceProvider.GetRequiredService<AppDbContext>()
-         .Database.Migrate();
+        .Database.Migrate();
 }
 
 // --------------------------------------------------------
-// Middleware
+// Pipeline
 // --------------------------------------------------------
 app.UseHttpsRedirection();
 app.UseCors("AllowTinyTicketsUi");
@@ -125,36 +130,37 @@ app.UseAuthorization();
 // --------------------------------------------------------
 // Endpoints
 // --------------------------------------------------------
-app.MapGet("/tickets", async (AppDbContext db) =>
-    await db.Tickets.ToListAsync()
-).RequireAuthorization("ApiScope");
 
-app.MapPost("/tickets", async (AppDbContext db, Ticket body, ServiceBusSender sender) =>
+// List tickets
+app.MapGet("/tickets", async (AppDbContext db)
+    => await db.Tickets.ToListAsync()).RequireAuthorization("ApiScope");
+
+// Create ticket
+app.MapPost("/tickets", async (AppDbContext db, Ticket body, ServiceBusSender sb) =>
 {
     body.Title = body.Title.Trim();
-
     db.Tickets.Add(body);
     await db.SaveChangesAsync();
 
-    await sender.SendMessageAsync(new ServiceBusMessage(System.Text.Json.JsonSerializer.Serialize(body))
-    {
-        ContentType = "application/json"
-    });
+    await sb.SendMessageAsync(new ServiceBusMessage(
+        System.Text.Json.JsonSerializer.Serialize(body)));
 
     return Results.Ok(body);
 }).RequireAuthorization("ApiScope");
 
-app.MapPost("/tickets/{id}/publish", async (int id, AppDbContext db, ServiceBusSender sender) =>
+// Publish
+app.MapPost("/tickets/{id}/publish", async (int id, AppDbContext db, ServiceBusSender sb) =>
 {
     var ticket = await db.Tickets.FindAsync(id);
-    if (ticket == null)
-        return Results.NotFound();
+    if (ticket == null) return Results.NotFound();
 
-    await sender.SendMessageAsync(new ServiceBusMessage(System.Text.Json.JsonSerializer.Serialize(ticket)));
+    await sb.SendMessageAsync(new ServiceBusMessage(
+        System.Text.Json.JsonSerializer.Serialize(ticket)));
+
     return Results.Ok(new { published = true });
 }).RequireAuthorization("ApiScope");
 
-// Storage SAS
+// SAS Upload
 app.MapPost("/storage/sas-upload", (SasRequest req, SasTokenService sas) =>
     Results.Ok(new { uploadUrl = sas.GenerateUploadSas(req.Container, req.FileName) })
 ).RequireAuthorization("ApiScope");
@@ -171,9 +177,11 @@ app.MapPost("/storage/save-metadata", async (UploadedFile file, AppDbContext db)
 // List files
 app.MapGet("/storage/files", async (AppDbContext db, SasReadService sas) =>
 {
-    var list = await db.UploadedFiles.OrderByDescending(f => f.UploadedOn).ToListAsync();
+    var items = await db.UploadedFiles
+        .OrderByDescending(f => f.UploadedOn)
+        .ToListAsync();
 
-    return Results.Ok(list.Select(f => new
+    return Results.Ok(items.Select(f => new
     {
         f.Id,
         f.FileName,
@@ -185,21 +193,20 @@ app.MapGet("/storage/files", async (AppDbContext db, SasReadService sas) =>
     }));
 }).RequireAuthorization("ApiScope");
 
-// Delete file
+// Delete
 app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db) =>
 {
     var entry = await db.UploadedFiles.FindAsync(id);
     if (entry == null) return Results.NotFound();
 
-    var bc = new BlobServiceClient(blobConn);
-    await bc.GetBlobContainerClient(entry.Container).DeleteBlobIfExistsAsync(entry.BlobName);
+    var blob = new BlobServiceClient(blobConn);
+    await blob.GetBlobContainerClient(entry.Container)
+        .DeleteBlobIfExistsAsync(entry.BlobName);
 
     db.UploadedFiles.Remove(entry);
     await db.SaveChangesAsync();
 
     return Results.Ok(new { deleted = true });
 }).RequireAuthorization("ApiScope");
-
-Console.WriteLine("LOADED AUDIENCE = " + apiAudience);
 
 app.Run();

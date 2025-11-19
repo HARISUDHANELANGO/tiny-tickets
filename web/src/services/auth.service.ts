@@ -1,40 +1,29 @@
 import { Injectable } from '@angular/core';
-import { msalInstance, protectedResources } from '../config/msal.config';
+import { msalInstance } from '../config/msal.config';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   login() {
-    return msalInstance.loginRedirect({
-      scopes: ['User.Read', ...protectedResources.tinyTicketsApi.scopes],
+    msalInstance.loginRedirect({
+      scopes: [
+        'openid',
+        'profile',
+        'email',
+        'api://f2cea967-6192-44ae-aedc-1e6b6a994e5e/access_as_user',
+      ],
     });
   }
 
   logout() {
-    return msalInstance.logoutRedirect();
+    msalInstance.logoutRedirect();
   }
 
   getAccount() {
-    const accts = msalInstance.getAllAccounts();
-    return accts.length ? accts[0] : undefined;
+    return msalInstance.getActiveAccount();
   }
 
   async getToken(scopes: string[]) {
-    const acct = this.getAccount();
-    if (!acct) return this.login();
-
-    // silent first
-    try {
-      return await msalInstance.acquireTokenSilent({
-        account: acct,
-        scopes,
-      });
-    } catch {
-      // fallback redirect
-      return msalInstance.acquireTokenRedirect({ scopes });
-    }
-  }
-
-  isLoggedIn() {
-    return !!this.getAccount();
+    const acc = this.getAccount()!;
+    return msalInstance.acquireTokenSilent({ account: acc, scopes });
   }
 }
