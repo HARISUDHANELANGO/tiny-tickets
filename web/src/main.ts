@@ -6,9 +6,8 @@ import { routes } from './app/app.routes';
 import { appConfig } from './app/app.config';
 import { msalInstance } from './config/msal.config';
 
-// 🔥 1. Initialize MSAL first
+// 🔥 MSAL v3 requires async initialization before any MSAL API call
 msalInstance.initialize().then(() => {
-  // 🔥 2. THEN bootstrap Angular
   bootstrapApplication(AppComponent, {
     providers: [
       provideHttpClient(),

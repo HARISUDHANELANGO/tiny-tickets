@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
 import { msalInstance, protectedResources } from '../config/msal.config';
-import { AuthenticationResult } from '@azure/msal-browser';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -15,33 +14,28 @@ export class AuthService {
   }
 
   getAccount() {
-    const accounts = msalInstance.getAllAccounts();
-    return accounts.length ? accounts[0] : undefined;
+    const accts = msalInstance.getAllAccounts();
+    return accts.length ? accts[0] : undefined;
   }
 
   async getToken(scopes: string[]) {
-    const account = this.getAccount();
+    const acct = this.getAccount();
 
-    if (!account) {
-      // Not logged in → start login
-      return msalInstance.loginRedirect({ scopes });
+    if (!acct) {
+      return this.login();
     }
 
     try {
-      // Try silent token
       return await msalInstance.acquireTokenSilent({
-        account,
         scopes,
+        account: acct,
       });
-    } catch (e) {
-      // Silent failed → go interactive
-      return msalInstance.acquireTokenRedirect({
-        scopes,
-      });
+    } catch {
+      return msalInstance.acquireTokenRedirect({ scopes });
     }
   }
 
-  isLoggedIn(): boolean {
+  isLoggedIn() {
     return !!this.getAccount();
   }
 }

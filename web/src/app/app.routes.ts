@@ -1,13 +1,11 @@
 import { Routes } from '@angular/router';
-import { LoginComponent } from './login/login';
 import { authGuard } from '../services/auth.guard';
 
 export const routes: Routes = [
   {
     path: 'login',
-    component: LoginComponent,
+    loadComponent: () => import('./login/login').then((m) => m.LoginComponent),
   },
-
   {
     path: '',
     loadComponent: () => import('./home/home').then((m) => m.HomeComponent),

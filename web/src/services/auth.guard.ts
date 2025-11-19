@@ -1,18 +1,20 @@
 import { inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { AuthService } from './auth.service';
+import { msalInstance } from '../config/msal.config';
 
 export function authGuard() {
   const auth = inject(AuthService);
+  const router = inject(Router);
 
-  const account = auth.getAccount();
-
-  if (account) {
-    return true;
+  // 🔥 DO NOT LOGIN while MSAL is handling redirect
+  const interactionStatus = sessionStorage.getItem('msal.interaction.status');
+  if (interactionStatus === 'interaction_in_progress') {
+    return false;
   }
 
-  // 🔥 Trigger MSAL login (NOT router navigation)
-  auth.login();
+  if (auth.isLoggedIn()) return true;
 
-  // 🔥 Stop activation — navigation will be taken over by MSAL
+  auth.login();
   return false;
 }
