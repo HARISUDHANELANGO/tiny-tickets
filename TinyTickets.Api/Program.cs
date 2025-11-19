@@ -10,6 +10,8 @@ using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
 using Azure.Identity;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Identity.Web;
 
 namespace WebApplication1
 {
@@ -85,6 +87,22 @@ namespace WebApplication1
             builder.Services.AddSingleton<SasTokenService>();
             builder.Services.AddSingleton<SasReadService>();
 
+            // --------------------------------------------------------
+            // Azure AD Authentication & Authorization
+            // --------------------------------------------------------
+
+            builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+
+            builder.Services.AddAuthorization(options =>
+            {
+                options.AddPolicy("ApiScope", policy =>
+                {
+                    policy.RequireAuthenticatedUser();
+                    policy.RequireClaim("scp", "access_as_user");
+                });
+            });
+
             var app = builder.Build();
 
             // Auto migrations
@@ -95,12 +113,18 @@ namespace WebApplication1
             }
 
             app.UseCors("AllowTinyTicketsUi");
+            // --------------------------------------------------------
+            // Authentication & Authorization Middleware
+            // --------------------------------------------------------
+            app.UseAuthentication();
+            app.UseAuthorization();
+
 
             // --------------------------------------------------------
             // Tickets
             // --------------------------------------------------------
             app.MapGet("/tickets", async (AppDbContext db) =>
-                await db.Tickets.ToListAsync());
+                await db.Tickets.ToListAsync()).RequireAuthorization("ApiScope");
 
             app.MapPost("/tickets", async (AppDbContext db, Ticket body, ServiceBusSender sender) =>
             {
@@ -115,7 +139,27 @@ namespace WebApplication1
                 });
 
                 return Results.Ok(body);
-            });
+            }).RequireAuthorization("ApiScope");
+
+            // --------------------------------------------------------
+            // Publish Ticket Event
+            // --------------------------------------------------------
+            app.MapPost("/tickets/{id}/publish", async (int id, AppDbContext db, ServiceBusSender sender) =>
+            {
+                var ticket = await db.Tickets.FindAsync(id);
+                if (ticket == null)
+                    return Results.NotFound(new { message = "Ticket not found" });
+
+                // send event
+                var evt = new ServiceBusMessage(JsonSerializer.Serialize(ticket))
+                {
+                    ContentType = "application/json"
+                };
+
+                await sender.SendMessageAsync(evt);
+
+                return Results.Ok(new { published = true, id });
+            }).RequireAuthorization("ApiScope");
 
             // --------------------------------------------------------
             // Storage APIs
@@ -124,7 +168,7 @@ namespace WebApplication1
             // SAS upload
             app.MapPost("/storage/sas-upload", (SasRequest req, SasTokenService sas) =>
                 Results.Ok(new { uploadUrl = sas.GenerateUploadSas(req.Container, req.FileName) })
-            );
+            ).RequireAuthorization("ApiScope");
 
             // Save Metadata
             app.MapPost("/storage/save-metadata", async (UploadedFile file, AppDbContext db) =>
@@ -133,7 +177,7 @@ namespace WebApplication1
                 db.UploadedFiles.Add(file);
                 await db.SaveChangesAsync();
                 return Results.Ok(file);
-            });
+            }).RequireAuthorization("ApiScope");
 
             // List files
             app.MapGet("/storage/files", async (AppDbContext db, SasReadService sas) =>
@@ -154,7 +198,7 @@ namespace WebApplication1
                         url = sas.GetReadUrl(f.Container, f.BlobName)
                     })
                 );
-            });
+            }).RequireAuthorization("ApiScope");
 
             // Delete file
             app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db) =>
@@ -171,7 +215,7 @@ namespace WebApplication1
                 await db.SaveChangesAsync();
 
                 return Results.Ok(new { deleted = true });
-            });
+            }).RequireAuthorization("ApiScope");
 
             app.Run();
         }

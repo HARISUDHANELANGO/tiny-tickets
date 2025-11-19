@@ -1,0 +1,19 @@
+.login-container {
+  text-align: center;
+  margin-top: 40px;
+}
+
+.login-btn,
+.logout-btn {
+  background: #0078d4;
+  color: white;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.logout-btn {
+  background: #444;
+}

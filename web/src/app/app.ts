@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { environment } from '../environments/environment.prod';
+import { RouterOutlet } from '@angular/router';
 
 export interface UploadedFile {
   id: number;
@@ -19,7 +20,7 @@ type Ticket = { id: number; title: string };
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterOutlet],
   templateUrl: './app.html',
 })
 export class AppComponent {
@@ -58,7 +59,9 @@ export class AppComponent {
   }
 
   publish(id: number) {
-    this.http.post(`${this.apiBase}/tickets/${id}/publish`, {}).subscribe();
+    this.http
+      .post(`${this.apiBase}/tickets/${id}/publish`, {})
+      .subscribe(() => console.log('Event published from UI'));
   }
 
   // -------------------------------
