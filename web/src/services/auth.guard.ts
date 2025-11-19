@@ -1,10 +1,8 @@
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { AuthService } from './auth.service';
 
 export function authGuard() {
   const auth = inject(AuthService);
-  const router = inject(Router);
 
   const account = auth.getAccount();
 
@@ -12,7 +10,9 @@ export function authGuard() {
     return true;
   }
 
-  // Redirect to login if no session exists
-  router.navigate(['/login']);
+  // 🔥 Trigger MSAL login (NOT router navigation)
+  auth.login();
+
+  // 🔥 Stop activation — navigation will be taken over by MSAL
   return false;
 }

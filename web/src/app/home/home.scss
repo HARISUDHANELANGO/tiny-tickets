@@ -1,0 +1,103 @@
+.container {
+  padding: 2rem;
+  max-width: 700px;
+  margin: auto;
+  font-family: Arial, sans-serif;
+}
+
+h3 {
+  margin-top: 0;
+}
+
+.card {
+  background: #fafafa;
+  padding: 1.2rem;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  margin-bottom: 1.5rem;
+}
+
+.ticket-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ticket-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.publish-btn {
+  background: #0078d4;
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background: #005ea1;
+  }
+}
+
+.empty {
+  color: #777;
+  font-style: italic;
+}
+
+.file-card {
+  border: 1px solid #ddd;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  background: white;
+}
+
+.preview-img {
+  width: 200px;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.timestamp {
+  font-size: 0.85em;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.download-link {
+  color: #0078d4;
+  text-decoration: none;
+  font-weight: 600;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.delete-btn {
+  background: #d9534f;
+  color: white;
+  border: none;
+  padding: 10px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background: #b52b27;
+  }
+}
+
+.download-btn {
+  background: #0078d4;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}

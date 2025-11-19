@@ -14,13 +14,15 @@ import { msalInterceptor } from '../services/msal-interceptor';
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-
     provideZoneChangeDetection({ eventCoalescing: true }),
 
-    // 🔥 HTTP + Azure AD Token Injection
+    // ✔ Router provided at the root
+    provideRouter(routes),
+
+    // ✔ HttpClient with MSAL token injection
     provideHttpClient(withInterceptors([msalInterceptor])),
 
-    // 🔥 Provide global MSAL instance for the entire app
+    // ✔ Global MSAL Instance
     { provide: 'MSAL_INSTANCE', useValue: msalInstance },
   ],
 };
