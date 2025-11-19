@@ -2,15 +2,14 @@ using Azure.Messaging.ServiceBus;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 using Microsoft.EntityFrameworkCore;
-using System.Reflection.Metadata;
 using System.Text.Json;
 using TinyTickets.Api.Data;
 using TinyTickets.Api.Models;
 using TinyTickets.Api.Services;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
-using QuestPDF.Helpers;
-
+using Azure.Identity;
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
 
 namespace WebApplication1
 {
@@ -22,6 +21,19 @@ namespace WebApplication1
             QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
 
             var builder = WebApplication.CreateBuilder(args);
+
+            // --------------------------------------------------------
+            // Load Key Vault — MUST be before reading secrets
+            // --------------------------------------------------------
+            var kvUrl = builder.Configuration["KeyVaultUrl"];
+
+            if (!string.IsNullOrWhiteSpace(kvUrl))
+            {
+                builder.Configuration.AddAzureKeyVault(
+                    new Uri(kvUrl),
+                    new DefaultAzureCredential()
+                );
+            }
 
             // --------------------------------------------------------
             // CORS
@@ -38,41 +50,44 @@ namespace WebApplication1
             });
 
             // --------------------------------------------------------
+            // Retrieve ALL secrets strictly from KEY VAULT
+            // --------------------------------------------------------
+            var sqlConn = builder.Configuration["SqlConnectionString"]
+                ?? throw new Exception("SqlConnection missing in Key Vault");
+
+            var serviceBusConn = builder.Configuration["ServiceBusConnectionString"]
+                ?? throw new Exception("ServiceBusConnection missing in Key Vault");
+
+            var blobConn = builder.Configuration["StorageAccountConnectionString"]
+                ?? throw new Exception("BlobStorageConnection missing in Key Vault");
+
+            // --------------------------------------------------------
             // SQL
             // --------------------------------------------------------
-            var sql = builder.Configuration.GetConnectionString("DefaultConnection")
-                    ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
-
             builder.Services.AddDbContext<AppDbContext>(opt =>
-                opt.UseSqlServer(sql));
+                opt.UseSqlServer(sqlConn));
 
             // --------------------------------------------------------
             // Service Bus
             // --------------------------------------------------------
             builder.Services.AddSingleton<ServiceBusClient>(_ =>
-            {
-                var cs = builder.Configuration["ServiceBus:ConnectionString"]
-                         ?? Environment.GetEnvironmentVariable("ServiceBus__ConnectionString")
-                         ?? throw new Exception("Service Bus connection string missing");
-
-                return new ServiceBusClient(cs);
-            });
+                new ServiceBusClient(serviceBusConn)
+            );
 
             builder.Services.AddSingleton<ServiceBusSender>(provider =>
-            {
-                var client = provider.GetRequiredService<ServiceBusClient>();
-                return client.CreateSender("ticket-events");
-            });
+                provider.GetRequiredService<ServiceBusClient>()
+                        .CreateSender("ticket-events")
+            );
 
             // --------------------------------------------------------
-            // SAS Services
+            // Blob SAS Services
             // --------------------------------------------------------
             builder.Services.AddSingleton<SasTokenService>();
             builder.Services.AddSingleton<SasReadService>();
 
             var app = builder.Build();
 
-            // Auto-migrations
+            // Auto migrations
             using (var scope = app.Services.CreateScope())
             {
                 scope.ServiceProvider.GetRequiredService<AppDbContext>()
@@ -82,7 +97,7 @@ namespace WebApplication1
             app.UseCors("AllowTinyTicketsUi");
 
             // --------------------------------------------------------
-            // Ticket APIs
+            // Tickets
             // --------------------------------------------------------
             app.MapGet("/tickets", async (AppDbContext db) =>
                 await db.Tickets.ToListAsync());
@@ -90,15 +105,15 @@ namespace WebApplication1
             app.MapPost("/tickets", async (AppDbContext db, Ticket body, ServiceBusSender sender) =>
             {
                 body.Title = body.Title.Trim();
+
                 db.Tickets.Add(body);
                 await db.SaveChangesAsync();
 
-                var msg = new ServiceBusMessage(JsonSerializer.Serialize(body))
+                await sender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(body))
                 {
                     ContentType = "application/json"
-                };
+                });
 
-                await sender.SendMessageAsync(msg);
                 return Results.Ok(body);
             });
 
@@ -106,11 +121,10 @@ namespace WebApplication1
             // Storage APIs
             // --------------------------------------------------------
 
-            // SAS Upload URL
+            // SAS upload
             app.MapPost("/storage/sas-upload", (SasRequest req, SasTokenService sas) =>
-            {
-                return Results.Ok(new { uploadUrl = sas.GenerateUploadSas(req.Container, req.FileName) });
-            });
+                Results.Ok(new { uploadUrl = sas.GenerateUploadSas(req.Container, req.FileName) })
+            );
 
             // Save Metadata
             app.MapPost("/storage/save-metadata", async (UploadedFile file, AppDbContext db) =>
@@ -121,96 +135,42 @@ namespace WebApplication1
                 return Results.Ok(file);
             });
 
-            // List
+            // List files
             app.MapGet("/storage/files", async (AppDbContext db, SasReadService sas) =>
             {
-                var rows = await db.UploadedFiles.OrderByDescending(f => f.UploadedOn).ToListAsync();
-
-                var result = rows.Select(f => new
-                {
-                    f.Id,
-                    f.FileName,
-                    f.BlobName,
-                    f.ContentType,
-                    f.Size,
-                    f.UploadedOn,
-                    url = sas.GetReadUrl(f.Container, f.BlobName)
-                });
-
-                return Results.Ok(result);
-            });
-
-            // Delete            
-
-            app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db, IConfiguration config) =>
-            {
-                var entry = await db.UploadedFiles.FindAsync(id);
-                if (entry == null)
-                    return Results.NotFound(new { message = "File not found" });
-
-                // Blob client
-                var blobService = new BlobServiceClient(
-                    config.GetConnectionString("StorageAccount")
-                    ?? Environment.GetEnvironmentVariable("StorageAccount__ConnectionString")
-                );
-
-                var container = blobService.GetBlobContainerClient(entry.Container);
-                var blob = container.GetBlobClient(entry.BlobName);
-
-                // Delete from Blob
-                await blob.DeleteIfExistsAsync();
-
-                // Delete from SQL
-                db.UploadedFiles.Remove(entry);
-                await db.SaveChangesAsync();
-
-                return Results.Ok(new { deleted = true, id = entry.Id });
-            });
-
-            app.MapGet("/storage/files/report/pdf", async (AppDbContext db) =>
-            {
-                var files = await db.UploadedFiles
+                var rows = await db.UploadedFiles
                     .OrderByDescending(f => f.UploadedOn)
                     .ToListAsync();
 
-                var pdf = QuestPDF.Fluent.Document.Create(container =>
-                {
-                    container.Page(page =>
+                return Results.Ok(
+                    rows.Select(f => new
                     {
-                        page.Margin(20);
-                        page.Header().Text("TinyTickets File Report").FontSize(20).SemiBold();
-                        page.Content().Table(table =>
-                        {
-                            table.ColumnsDefinition(cols =>
-                            {
-                                cols.RelativeColumn(3); // Name
-                                cols.RelativeColumn(2); // Type
-                                cols.RelativeColumn(1); // Size
-                                cols.RelativeColumn(2); // Date
-                            });
+                        f.Id,
+                        f.FileName,
+                        f.BlobName,
+                        f.ContentType,
+                        f.Size,
+                        f.UploadedOn,
+                        url = sas.GetReadUrl(f.Container, f.BlobName)
+                    })
+                );
+            });
 
-                            // Header row
-                            table.Header(header =>
-                            {
-                                header.Cell().Text("File Name").SemiBold();
-                                header.Cell().Text("Content Type").SemiBold();
-                                header.Cell().Text("Size").SemiBold();
-                                header.Cell().Text("Uploaded On").SemiBold();
-                            });
+            // Delete file
+            app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db) =>
+            {
+                var entry = await db.UploadedFiles.FindAsync(id);
+                if (entry == null)
+                    return Results.NotFound();
 
-                            // Rows
-                            foreach (var f in files)
-                            {
-                                table.Cell().Text(f.FileName);
-                                table.Cell().Text(f.ContentType);
-                                table.Cell().Text($"{(f.Size / 1024.0):0.0} KB");
-                                table.Cell().Text(f.UploadedOn.ToString("yyyy-MM-dd HH:mm"));
-                            }
-                        });
-                    });
-                }).GeneratePdf();
+                var blobService = new BlobServiceClient(blobConn);
+                var container = blobService.GetBlobContainerClient(entry.Container);
+                await container.DeleteBlobIfExistsAsync(entry.BlobName);
 
-                return Results.File(pdf, "application/pdf", "TinyTickets_File_Report.pdf");
+                db.UploadedFiles.Remove(entry);
+                await db.SaveChangesAsync();
+
+                return Results.Ok(new { deleted = true });
             });
 
             app.Run();

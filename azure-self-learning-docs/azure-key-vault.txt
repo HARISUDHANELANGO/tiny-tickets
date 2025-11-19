@@ -1,0 +1,295 @@
+🟦 AZURE KEY VAULT — FULL JOURNEY SHEET (TinyTickets)
+A complete documentation of what we did, why, how, issues faced, resolutions, and interview-ready insights.
+1️⃣ Goal of Key Vault Integration
+
+Securely store all sensitive configurations:
+
+SQL connection string
+
+Service Bus connection string
+
+Blob Storage connection string
+
+…and load them inside Program.cs using DefaultAzureCredential.
+
+This eliminates secrets from:
+
+❌ appsettings.json
+❌ environment variables
+❌ repository / deployment logs
+
+2️⃣ Azure Setup Steps (Performed Successfully)
+✔ Step 1 — Create Key Vault
+
+Name: tinytickets-vault
+
+✔ Step 2 — Assign yourself permissions
+
+Using RBAC, not old Access Policies:
+
+Required roles:
+
+Role	Purpose
+Key Vault Administrator	Full vault control
+Key Vault Secrets Officer	CRUD Secrets
+(Optional) Key Vault Reader	Safe read-only
+
+⚠️ Important:
+RBAC changes take 5–10 minutes before becoming active (we saw this warning).
+
+✔ Step 3 — Add Secrets
+
+Inside Secrets → Generate/Import:
+
+Secret Name	Value
+SqlConnectionString	Azure SQL connection
+ServiceBusConnectionString	Service Bus namespace connection
+StorageAccountConnectionString	Azure Storage account key
+
+Naming rules followed:
+
+No nested names like "ConnectionStrings:DefaultConnection"
+
+Use flat names (ideal for Key Vault)
+
+Matches the entries used in Program.cs
+
+✔ Step 4 — Access Key Vault from our API using DefaultAzureCredential
+
+TinyTickets API is deployed to Azure App Service, so:
+
+Locally → it uses your AAD credentials
+
+In Azure → it uses the system-assigned managed identity
+
+We enabled system-assigned identity in Portal ✔.
+
+3️⃣ Code Integration Steps
+✔ Step 1 — Add Azure Key Vault NuGet
+Install-Package Azure.Identity
+
+
+(This package was already installed earlier.)
+
+✔ Step 2 — Add Key Vault loading BEFORE any Azure client is created
+
+Correct placement in Program.cs:
+
+var keyVaultUrl = builder.Configuration["KeyVaultUrl"];
+
+if (!string.IsNullOrEmpty(keyVaultUrl))
+{
+    builder.Configuration.AddAzureKeyVault(
+        new Uri(keyVaultUrl),
+        new DefaultAzureCredential()
+    );
+}
+
+
+Why this ordering matters:
+
+SQL, Service Bus, Blob Storage clients must read updated config AFTER Key Vault is loaded.
+
+You fixed this correctly in the final Program.cs.
+
+✔ Step 3 — All connection strings now come from vault
+SQL:
+var sql = builder.Configuration["SqlConnectionString"]
+          ?? throw new Exception("SQL connection missing");
+
+Service Bus:
+var serviceBusConn = builder.Configuration["ServiceBusConnectionString"]
+                     ?? throw new Exception("Service Bus connection missing");
+
+Blob Storage:
+var storage = builder.Configuration["StorageAccountConnectionString"]
+              ?? throw new Exception("Storage account connection missing");
+
+
+These match your Key Vault secret names perfectly.
+
+4️⃣ Issues Faced & Resolutions
+❌ 1. “The operation is not allowed by RBAC”
+
+✔ RESOLVED: You assigned yourself Admin + Secrets Officer.
+Azure warned that stabilization takes 5 minutes.
+
+❌ 2. AddAzureKeyVault extension not found
+
+Cause: Incorrect namespace + location inside Program.cs
+✔ RESOLVED:
+Add extension AFTER builder created:
+
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
+
+
+And ensure:
+
+builder.Configuration.AddAzureKeyVault(...)
+
+❌ 3. Secrets not loading inside Blob / Service Bus constructors
+
+Cause: Key Vault was being added after services were registered.
+
+✔ RESOLVED by moving:
+
+builder.Configuration.AddAzureKeyVault(...)
+
+
+before:
+
+builder.Services.AddDbContext(...)
+builder.Services.AddSingleton<ServiceBusClient>(...)
+builder.Services.AddSingleton<SasTokenService>()
+
+5️⃣ Verification Checklist (Everything Completed)
+Check	Status
+Key Vault created	✔
+RBAC roles assigned	✔
+Secrets added correctly	✔
+TinyTickets App uses Managed Identity	✔
+Program.cs loads Key Vault early	✔
+All Azure services read secrets from vault	✔
+No secrets in appsettings.json	✔
+Local debug uses Azure CLI credentials	✔
+App Service has access to Key Vault	✔
+
+You are 100% done with Key Vault integration.
+
+6️⃣ Key Vault Flow Cheat Sheet (Easy to Remember)
+1. Create Key Vault  
+2. Assign RBAC  
+3. Add Secrets  
+4. Enable Managed Identity  
+5. Grant Vault access to identity  
+6. Add AddAzureKeyVault() early in Program.cs  
+7. Read secrets using builder.Configuration["SecretName"]  
+8. Remove secrets from appsettings.json  
+
+
+Simple rule:
+
+“Vault first — services next.”
+7️⃣ Interview Perspective — What You Can Confidently Say
+🔥 Why use Key Vault instead of appsettings?
+
+Centralized secure secret management
+
+Rotatable keys
+
+Zero exposure in CI/CD logs
+
+Managed identity → no credentials in code
+
+App can auto-refresh secrets without redeploy
+
+🔥 Describe secret loading pipeline
+
+Azure App Service → Managed identity → Key Vault → IConfiguration → DI Services
+
+🔥 How do you handle local debugging?
+
+DefaultAzureCredential auto-selects:
+
+Environment Variables
+
+Azure CLI
+
+VS Credential
+
+Managed Identity (in Azure)
+
+So no changes are required for local debug.
+
+🔥 What happens if Key Vault is down?
+
+App startup throws an exception → Safe failure
+Better than booting with invalid secrets.
+
+🔥 Why use flat secret names?
+
+Because nested secret names like "ConnectionStrings:DefaultConnection"
+do not map well into Key Vault.
+
+8️⃣ Key Vault README (Final Copy-Paste Version)
+
+Below is your clean README.md for Key Vault only:
+
+🔐 Azure Key Vault Integration — TinyTickets API
+Purpose
+
+Securely manage all connection strings for:
+
+SQL Database
+
+Service Bus
+
+Blob Storage
+
+✔ Steps Completed
+1. Created Key Vault:
+
+tintytickets-vault
+
+2. Added RBAC roles:
+
+Key Vault Administrator
+
+Key Vault Secrets Officer
+
+3. Added Secrets
+Secret Name	Purpose
+SqlConnectionString	Azure SQL
+ServiceBusConnectionString	Azure Service Bus
+StorageAccountConnectionString	Storage account
+4. Enabled Managed Identity for App Service
+5. Granted Vault access to the identity
+✔ Program.cs Integration
+var keyVaultUrl = builder.Configuration["KeyVaultUrl"];
+
+if (!string.IsNullOrEmpty(keyVaultUrl))
+{
+    builder.Configuration.AddAzureKeyVault(
+        new Uri(keyVaultUrl),
+        new DefaultAzureCredential()
+    );
+}
+
+Reading from Key Vault:
+builder.Configuration["SqlConnectionString"]
+builder.Configuration["ServiceBusConnectionString"]
+builder.Configuration["StorageAccountConnectionString"]
+
+✔ Learnings
+
+Secrets must be flat names
+
+RBAC roles take time to propagate
+
+AddAzureKeyVault must run before any service registration
+
+DefaultAzureCredential simplifies local + cloud authentication
+
+✔ Troubleshooting
+❌ “Operation not allowed by RBAC”
+
+→ Wait 5 minutes / Assign Secrets Officer
+
+❌ Extension method AddAzureKeyVault missing
+
+→ Add namespace using Azure.Identity;
+
+❌ Secrets not loading in DI
+
+→ Ensure Key Vault is configured before services
+
+✔ Interview Summary
+
+Key Vault centralizes secrets
+
+Eliminates secrets from code
+
+Uses Managed Identity for credential-less access
+
+A must-have in enterprise applications
