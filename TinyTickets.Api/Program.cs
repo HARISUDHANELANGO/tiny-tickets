@@ -38,7 +38,7 @@ var sbConn = builder.Configuration["ServiceBusConnectionString"];
 var blobConn = builder.Configuration["StorageAccountConnectionString"];
 var tenantId = builder.Configuration["AzureAd:TenantId"];
 var instance = builder.Configuration["AzureAd:Instance"];
-var apiAudience = builder.Configuration["AzureAd:ApiAudience"];
+var apiAudience = builder.Configuration["AzureAd:Audience"];
 
 // --------------------------------------------------------
 // SQL
@@ -199,5 +199,7 @@ app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db) =>
 
     return Results.Ok(new { deleted = true });
 }).RequireAuthorization("ApiScope");
+
+Console.WriteLine("LOADED AUDIENCE = " + apiAudience);
 
 app.Run();
