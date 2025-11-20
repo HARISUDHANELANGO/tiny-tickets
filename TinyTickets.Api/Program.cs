@@ -67,8 +67,9 @@ builder.Services.AddCors(o =>
 {
     o.AddPolicy("AllowTinyTicketsUi", p =>
         p.WithOrigins("https://salmon-rock-08a479500.3.azurestaticapps.net")
+         .AllowAnyMethod()
          .AllowAnyHeader()
-         .AllowAnyMethod());
+         .AllowCredentials());
 });
 
 // --------------------------------------------------------
