@@ -5,7 +5,7 @@ import { msalInstance } from '../config/msal.config';
 export class AuthService {
   login() {
     return msalInstance.loginRedirect({
-      scopes: ['api://f2cea967-6192-44ae-aedc-1e6b6a994e5e/access_as_user'],
+      scopes: ['api://9768865e-83af-4a37-8785-b3a547a4e220/access_as_user'],
     });
   }
 
@@ -21,7 +21,7 @@ export class AuthService {
     const account = msalInstance.getActiveAccount()!;
     return msalInstance.acquireTokenSilent({
       account,
-      scopes: ['api://f2cea967-6192-44ae-aedc-1e6b6a994e5e/access_as_user'],
+      scopes: ['api://9768865e-83af-4a37-8785-b3a547a4e220/access_as_user'],
     });
   }
 }
