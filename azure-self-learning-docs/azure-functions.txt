@@ -1,0 +1,733 @@
+TinyTickets – Azure Functions (Full Documentation)
+Enterprise-Grade, End-to-End Architecture, Deployment, Troubleshooting & Interview Guide
+1. Introduction
+
+TinyTickets is a full-stack, cloud-native application built to master:
+
+Angular 20 SPA
+
+.NET 8 Minimal API
+
+SQL Server (Local + Azure SQL)
+
+Docker + docker-compose
+
+Azure Services:
+
+App Service (API)
+
+Static Web Apps (UI)
+
+Blob Storage
+
+Service Bus Queue
+
+Key Vault
+
+Azure Functions (Isolated .NET 8)
+
+Application Insights
+
+Monitoring
+
+Azure Identity & MSAL Authentication
+
+This document covers Azure Functions, which forms the serverless “backend worker” layer in TinyTickets.
+
+2. What Are Azure Functions? (Interview-Ready Explanation)
+
+Azure Functions is Microsoft’s serverless compute service, designed to run small pieces of code triggered by events.
+
+✔ Key Idea
+
+“You write the logic. Azure handles the servers.”
+
+✔ You don’t manage:
+
+Servers
+
+Scaling
+
+OS patches
+
+Monitoring agents
+
+VM clusters
+
+✔ Azure Functions automatically:
+
+Scale from zero to thousands
+
+Handle events instantly
+
+Bill only for milliseconds of execution
+
+Run background tasks independently of your API
+
+3. Why Do Companies Use Azure Functions? (Real-World Use Cases)
+⭐ 1. Asynchronous Processing
+
+Example:
+User uploads an image → Function resizes → stores → notifies user.
+
+⭐ 2. Decoupling UI/API from heavy tasks
+
+The API remains fast, long-running jobs are offloaded to Functions.
+
+⭐ 3. Event-Driven Architecture
+
+Triggered by events:
+
+Event Type	Function Trigger
+Message arrives	Service Bus Trigger
+File uploaded	Blob Trigger
+Timer schedule	Timer Trigger
+HTTP call	Http Trigger
+⭐ 4. Perfect for Microservices
+
+Each function = small, isolated micro-job.
+
+⭐ 5. Cost Efficiency
+
+If unused, cost is ₹0.
+
+⭐ 6. Reliability
+
+Handles:
+
+Retries
+
+Poison messages
+
+Dead-letter queues
+-Concurrency control
+
+⭐ 7. Enterprise integration
+
+Azure Functions plug directly into:
+
+Azure Event Grid
+
+Azure Service Bus
+
+Azure Storage
+
+Cosmos DB
+
+SQL
+
+Key Vault
+
+Identity
+
+4. Why Azure Functions in TinyTickets?
+
+TinyTickets is purposely architected like a modern cloud application.
+
+We use Azure Functions to handle:
+
+✔ 1. Background Event Processing
+
+When the user “Publishes” a ticket:
+
+API → Service Bus Queue → Function → SQL Audit
+
+✔ 2. Blob File Processing
+
+When the user uploads an image:
+
+Angular → SAS Upload → Blob Storage → Function → SQL Audit
+
+✔ 3. Async decoupling
+
+The API stays fast, Functions handle background work.
+
+5. TinyTickets Azure Function App Overview
+Function App Name:
+
+tinytickets-function-web
+
+Triggers Implemented
+
+TicketQueueProcessor → ServiceBusTrigger
+
+BlobUploadProcessor → BlobTrigger
+
+Audit Tables
+
+TicketAudit
+
+BlobAudit
+
+Storage Containers
+
+ticket-images
+
+functiondeploy
+
+Service Bus Queue
+
+ticket-events
+
+6. Architecture Overview (ASCII Diagram)
+                   ┌────────────────────────────────────────┐
+                   │              Angular 20 UI              │
+                   └────────────────────────────────────────┘
+                                   │
+                          (HTTPS Requests)
+                                   │
+                     ┌─────────────────────────┐
+                     │    .NET 8 Minimal API   │
+                     └─────────────────────────┘
+                                   │
+                   ┌───────────────┴────────────────┐
+                   │                                │
+           Writes metadata                     Publishes ticket
+                to DB                           to Service Bus
+                   │                                │
+   ┌───────────────┴──────────────┐         ┌───────┴─────────┐
+   │         Azure SQL DB          │         │   Service Bus    │
+   └───────────────────────────────┘         │   Queue: ticket-events
+                                             └───────┬─────────┘
+                                                     │ Trigger
+                                   ┌─────────────────▼──────────────────┐
+                                   │       Azure Functions (Isolated)    │
+                                   │       tinytickets-function-web      │
+                                   └─────────────────┬──────────────────┘
+                                                     │
+           ┌──────────────────────────────┬──────────┴─────────────┐
+           │                              │                        │
+           ▼                              ▼                        ▼
+ TicketQueueProcessor            BlobUploadProcessor       (Future Functions)
+(Service Bus Trigger)             (Blob Trigger)
+Writes TicketAudit row          Writes BlobAudit row
+
+7. Complete Step-by-Step Implementation
+
+Below is the FULL implementation guide for Azure Functions in TinyTickets.
+
+STEP 1 — Create Azure Functions Project (Isolated .NET 8)
+1.1 Create folder
+mkdir TinyTickets.Functions
+cd TinyTickets.Functions
+
+1.2 Create project
+func init . --worker-runtime dotnet-isolated --target-framework net8.0
+
+STEP 2 — Add Package References
+
+Required for:
+
+EF Core
+
+SQL Server
+
+Service Bus
+
+Blob Triggers
+
+Key Vault
+
+Identity
+
+Install:
+dotnet add package Microsoft.Azure.Functions.Worker
+dotnet add package Microsoft.Azure.Functions.Worker.Extensions.Storage
+dotnet add package Microsoft.Azure.Functions.Worker.Extensions.ServiceBus
+dotnet add package Microsoft.Azure.Functions.Worker.Extensions.Blobs
+dotnet add package Microsoft.EntityFrameworkCore
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer
+dotnet add package Microsoft.EntityFrameworkCore.Design
+dotnet add package Azure.Identity
+
+STEP 3 — Add DbContext + Audit Tables
+TicketAudit.cs
+public class TicketAudit
+{
+    public int Id { get; set; }
+    public int TicketId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public DateTime ProcessedOn { get; set; }
+}
+
+BlobAudit.cs
+public class BlobAudit
+{
+    public int Id { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public string BlobName { get; set; } = string.Empty;
+    public long Size { get; set; }
+    public DateTime ProcessedOn { get; set; }
+}
+
+STEP 4 — Implement AppDbContext
+public class AppDbContext : DbContext
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) {}
+
+    public DbSet<TicketAudit> TicketAudits => Set<TicketAudit>();
+    public DbSet<BlobAudit> BlobAudits => Set<BlobAudit>();
+}
+
+STEP 5 — Register DbContext & Key Vault in Program.cs
+Program.cs Setup
+
+Load Key Vault
+
+Load SQL connection
+
+Register DbContext
+
+Register Trigger Services
+
+STEP 5 — Register DbContext & Key Vault (High-Level)
+
+This step connects the Azure Functions host to:
+
+Azure Key Vault
+
+Azure SQL Database
+
+Service Bus
+
+Blob Storage
+
+EF Core DbContext
+
+What happens here?
+
+Azure Key Vault is added to the configuration provider.
+
+Ensures Functions load secrets securely.
+
+No connection string stored locally or in appsettings.
+
+Uses DefaultAzureCredential to authenticate.
+
+SQL connection is fetched from Key Vault.
+
+EF Core AppDbContext is registered.
+
+Audit services are added to DI container.
+
+FunctionsWorkerDefaults enables isolated-function runtime.
+
+💡 Interview Tip:
+
+Azure Functions isolated model follows the same DI pattern as ASP.NET Core apps.
+
+STEP 6 — Create Audit Services (High-Level)
+
+Two services were added:
+
+1. TicketAuditService
+
+Writes a new row in TicketAudit table whenever a Service Bus message is processed.
+
+2. BlobAuditService
+
+Writes a new row in BlobAudit table whenever a Blob is uploaded into ticket-images.
+
+Why do we split these into services?
+
+Clean architecture (Separation of Concerns)
+
+Functions remain thin
+
+Easy for unit testing
+
+Easy to extend for future triggers (email, slack, workflows)
+
+STEP 7 — Implement Triggers (High-Level)
+
+TinyTickets currently uses two triggers, covering the two most widely used enterprise scenarios:
+
+7.1 Service Bus Trigger — TicketQueueProcessor
+
+Trigger fires when the API sends a message to ticket-events queue.
+
+Message consists of ticket data (id, title).
+
+Function parses message → writes audit entry into SQL.
+
+Ensures asynchronous processing.
+
+Purpose:
+Decouple "publishing a ticket" from "auditing a ticket".
+
+Why companies use this:
+This is a textbook event-driven pattern. The API stays fast while background jobs happen asynchronously.
+
+7.2 Blob Trigger — BlobUploadProcessor
+
+Trigger fires when a new file is uploaded to ticket-images container.
+
+Function reads metadata → writes audit entry.
+
+No need to poll blob storage — Azure notifies Function automatically.
+
+Purpose:
+Capture file upload events for auditing, indexing, or further processing.
+
+Why companies use this:
+Blob triggers are used heavily in:
+
+Image processing
+
+Document indexing
+
+Medical image pipelines
+
+OCR pipelines
+
+Machine Learning model preprocessing
+
+STEP 8 — Setting up local.settings.json (High-Level)
+
+Local development uses:
+
+Local service bus
+
+Local SQL
+
+Azurite Storage (or local emulator)
+
+Key Vault URL
+
+Worker runtime set to dotnet-isolated
+
+This file does not get deployed to Azure.
+
+STEP 9 — Testing Locally (High-Level)
+
+After running:
+
+func start
+
+
+You should see:
+
+Functions:
+    TicketQueueProcessor
+    BlobUploadProcessor
+
+
+Testing:
+
+Publish ticket in TinyTickets UI → Service Bus trigger fires.
+
+Upload image → Blob trigger fires.
+
+Both should create new audit rows in SQL.
+
+💡 Always check console logs when testing Functions locally — they provide more detail than Portal Monitor.
+
+STEP 10 — Deployment to Azure (High-Level + Complete Strategy)
+
+Deployment is the most important part of Azure Functions.
+We chose the only correct method for .NET Isolated Functions:
+
+✔ Windows Consumption Plan
+✔ ZIP Deploy
+✔ WEBSITE_RUN_FROM_PACKAGE
+✔ Storage-hosted ZIP (public or SAS)
+✔ No Linux dynamic app plans
+
+Below are the clean, interview-ready steps.
+
+10.1 Prepare ZIP package
+
+The publish process creates:
+
+bin/Release/net8.0/publish/
+
+
+This folder must be zipped exactly as-is.
+
+10.2 Upload ZIP to Storage
+
+We used container:
+
+functiondeploy
+
+
+Because Azure Functions requires:
+
+A stable URL
+
+A public or SAS-authenticated location
+
+SAS token must be valid for at least 1 day during deploy.
+
+10.3 Enable WEBSITE_RUN_FROM_PACKAGE
+
+Use:
+
+az webapp config appsettings set \
+   --name tinytickets-function-web \
+   --resource-group TinyTickets-Functions-RG \
+   --settings WEBSITE_RUN_FROM_PACKAGE="https://<sas-url>"
+
+
+This sets the app to:
+
+Mount the ZIP as the root filesystem
+
+Run the code from package
+
+Ignore Azure Portal editor
+
+This is the official Microsoft-recommended deployment mode.
+
+10.4 Restart Function App
+az functionapp restart -g TinyTickets-Functions-RG -n tinytickets-function-web
+
+10.5 Verify Deployment
+
+Portal → Function App → Functions
+
+You should see:
+
+TicketQueueProcessor
+
+BlobUploadProcessor
+
+Status: Enabled
+
+STEP 11 — ALL Challenges We Faced (Summarized, Clean & Organized)
+(This is GOLD for interviews — it shows architecture depth & debugging maturity)
+
+We faced almost every common Azure Functions challenge.
+This section documents each with the cause + clean fix.
+
+11.1 LinuxDynamicWorkersNotAllowedInResourceGroup
+
+Cause:
+A Linux Consumption Function App was created in a region that doesn’t support Linux dynamic workers.
+
+Fix:
+Recreated Function App using:
+
+Windows OS
+
+.NET 8 Isolated
+
+Consumption plan
+
+11.2 WEBSITE_RUN_FROM_PACKAGE not applying
+
+Cause:
+
+Linux Consumption does not support this setting for .NET Isolated.
+
+Fix:
+Recreated Function App as Windows → Works instantly.
+
+11.3 ZipDeploy / Azure CLI rejecting deployment
+
+Cause:
+
+Azure CLI blocks unsupported deployment paths for Linux isolated.
+
+Fix:
+Switch to Windows → deployment allowed.
+
+11.4 Functions not appearing in Azure Portal
+
+Cause:
+ZIP was deployed but NOT mounted because WEBSITE_RUN_FROM_PACKAGE was blocked.
+
+Fix:
+After moving to Windows, Functions discovered automatically.
+
+11.5 SQL Login issue: "The server is not currently configured to accept this token"
+
+Cause:
+Azure SQL DB not configured for Azure AD Authentication for service principal.
+
+Fix:
+
+Created Azure AD user inside SQL Server.
+
+Granted it proper role (db_datareader, db_datawriter, custom).
+
+SQL connectivity succeeded.
+
+11.6 Blob Storage Emulator 127.0.0.1:10000 errors
+
+Cause:
+Azurite not installed or not running.
+
+Fix:
+Used the real Azure Storage account instead.
+
+11.7 Key Vault not loading
+
+Cause:
+DefaultAzureCredential requires Function App’s identity to be granted access.
+
+Fix:
+
+Enabled System Assigned Managed Identity
+
+Added Identity to Key Vault access policy (Get, List).
+
+Key Vault loads correctly.
+
+11.8 Function not triggering Service Bus messages
+
+Cause:
+Local connection string or wrong setting name (SERVICE_BUS_CONNECTION).
+
+Fix:
+
+Correct name in environment.
+
+Correct queue name (ticket-events).
+
+Trigger fired successfully.
+
+11.9 Blob trigger delayed / not firing
+
+Cause:
+Blob Trigger caching + host indexing delays.
+
+Fix:
+Wait 1–2 mins after deployment + restart host.
+
+11.10 WEBSITE_USE_PLACEHOLDER_DOTNETISOLATED
+
+Cause:
+This setting sometimes interferes with .NET 8 isolated startup.
+
+Fix:
+Set it to 0 or remove if present.
+
+STEP 12 — Final Architecture Summary
+TinyTickets Backend Architecture (High-Level)
+Angular → API → Service Bus Queue → Function App → SQL
+                    │
+                    → Blob Storage → Function App → SQL
+
+
+This is a cloud-native, real-world, event-driven design used by:
+
+E-commerce
+
+Healthcare
+
+BFSI
+
+Ticketing platforms
+
+Logistics
+
+Media processing
+
+Enterprise SaaS
+
+STEP 13 — Interview Answers (Top-Level)
+⭐ 1. Why Azure Functions instead of doing everything inside .NET API?
+
+Because:
+
+API is synchronous, Functions are asynchronous.
+
+API should not perform heavy or long-running tasks.
+
+Functions auto-scale independently.
+
+Decouples business operations.
+
+Provides reliability, retries, poison queues.
+
+Costs near-zero when idle.
+
+Built-in connectors to Azure ecosystem.
+
+Short interview answer:
+
+We chose Azure Functions because TinyTickets needed background processing, event-driven workloads, automatic scaling, and reliable decoupling between the API and long-running operations. Functions handle asynchronous tasks like auditing tickets and processing uploaded files far better than a Web API can.
+
+⭐ 2. What types of triggers are used?
+
+ServiceBusTrigger — for event-based ticket publishing
+
+BlobTrigger — for file upload processing
+
+⭐ 3. Why Service Bus instead of Event Grid?
+
+Because TinyTickets requires:
+
+Guaranteed message delivery
+
+Order preservation
+
+Retries
+
+Dead-lettering
+
+Strict FIFO
+
+Event Grid is best for event fan-out and webhooks, not critical events.
+
+⭐ 4. How do you secure Azure Function secrets?
+
+Key Vault
+
+Managed Identity
+
+No secrets in local.settings.json
+
+Least-privilege policies
+
+⭐ 5. Why OS type = Windows for deployment?
+
+Because:
+
+Linux Consumption DOES NOT support Run From Package for isolated .NET.
+
+Deployment paths are blocked by Azure CLI.
+
+Function discovery fails in the Portal.
+
+STEP 14 — Troubleshooting Cheatsheet
+
+A clean, real-world troubleshooting table:
+
+Issue	Cause	Fix
+Functions not appearing	WEBSITE_RUN_FROM_PACKAGE ignored	Use Windows plan
+Blob trigger not firing	Deployment propagation delay	Restart Function App
+SQL AD login failing	Principal not added to SQL	Create AAD user inside SQL
+Service Bus trigger dead	Wrong connection name	Must be SERVICE_BUS_CONNECTION
+Key Vault errors	Identity not added	Add MI to Key Vault access policy
+Storage emulator errors	Azurite not installed	Use real Azure storage
+
+⭐ **Why Not Do Asynchronous Processing Inside .NET API?
+
+Why Azure Functions Instead? (Knockout Summary)**
+
+Even though .NET supports async/await, BackgroundService, and hosted workers, these features do not provide cloud-scale asynchronous infrastructure. Azure Functions does.
+
+✔ Async code ≠ Async infrastructure
+Azure Functions provide what a .NET API cannot:
+
+Automatic scaling (0 → thousands of parallel executions)
+
+Event-driven triggers (Service Bus, Blob Storage, Timer, Event Grid)
+
+Guaranteed delivery with retries + DLQ
+
+Isolated background execution separate from API
+
+Zero cost when idle
+
+No servers or workers to manage
+
+High reliability even if API is down
+
+Built-in monitoring, logs, metrics, alerts
+
+In one sentence:
+
+.NET can write asynchronous code, but Azure Functions provide asynchronous infrastructure — scalable, event-driven, reliable, and cost-efficient.

@@ -1,0 +1,249 @@
+🟦 TinyTickets – Azure AD Authentication (End-to-End Guide)
+
+This document explains the complete, production-ready Azure Active Directory (AAD) authentication setup for:
+
+TinyTickets-UI (Angular SPA)
+
+TinyTickets-API-Pro (.NET 8 Web API)
+
+Azure App Service
+
+Azure Key Vault
+
+This guide captures every step, configuration, and fix from the authentication debugging journey.
+
+📌 1. Architecture Overview
+Layer	Tech	Purpose
+Frontend	Angular + MSAL Browser	Authenticates user, obtains access token
+Backend	.NET 8 API	Validates JWT from Azure AD
+Identity Provider	Azure AD App Registrations	Issues tokens
+Secrets	Azure Key Vault	Stores TenantId, ClientId, Audience, Instance
+
+Authentication flow:
+
+User → MSAL Login → UI retrieves access token
+  → Angular interceptor attaches token to API calls
+     → API validates issuer + audience + scope
+         → Authorized → Returns Data
+
+📌 2. Azure AD Configuration
+
+Azure AD requires two App Registrations:
+
+🟦 2.1 API App Registration — TinyTickets-API-Pro
+Purpose
+
+Expose secure APIs and validate JWT tokens.
+
+Steps
+✔ A. Create app registration
+
+Name: TinyTickets-API-Pro
+Supported account types: My organization only
+
+✔ B. Set the Application ID URI
+
+Go to:
+Expose an API → Application ID URI
+
+Use:
+
+api://<API_CLIENT_ID>
+
+
+Example:
+
+api://9768865e-83af-4a37-8785-b3a547a4e220
+
+✔ C. Create API Scope
+
+Navigate:
+Expose an API → Add Scope
+
+Field	Value
+Scope name	access_as_user
+Who can consent	Admins + Users
+Description	Access TinyTickets API as user
+
+The UI must request this scope.
+The API must validate this scope.
+
+🟦 2.2 UI App Registration — TinyTickets-UI
+Purpose
+
+Allows Angular SPA to authenticate and request tokens.
+
+Steps
+✔ A. Create App Registration
+
+Name: TinyTickets-UI
+
+✔ B. Configure Redirect URIs
+
+Go to:
+Authentication → Add platform → SPA
+
+Add:
+
+https://salmon-rock-08a479500.3.azurestaticapps.net
+http://localhost:4200
+
+✔ C. Assign Permissions
+
+Go to:
+API Permissions → Add Permission → My APIs
+
+Choose:
+
+TinyTickets-API-Pro → Delegated → access_as_user
+
+
+👉 In personal Microsoft accounts, Admin Consent is NOT required, so UI works without it.
+
+📌 3. Key Vault Secrets
+
+Your Azure Key Vault must store:
+
+Secret Name	Value
+AzureAd--TenantId	0784cbd8-29cf-49ad-ae0e-4ebd47bf32d1
+AzureAd--ClientId	<UI_CLIENT_ID>
+AzureAd--Audience	api://<API_CLIENT_ID>
+AzureAd--Instance	https://login.microsoftonline.com/
+
+These are injected into your .NET Web App using:
+
+@Microsoft.KeyVault(SecretUri=<your_secret_uri>)
+
+📌 4. Angular Setup (MSAL)
+msal.config.ts
+export const msalConfig = {
+  auth: {
+    clientId: '<UI_CLIENT_ID>',
+    authority: 'https://login.microsoftonline.com/<TENANT_ID>',
+    redirectUri: 'https://salmon-rock-08a479500.3.azurestaticapps.net',
+  }
+};
+
+export const protectedResources = {
+  tinyTicketsApi: {
+    endpoint: 'https://tinytickets-api.azurewebsites.net/',
+    scopes: ['api://9768865e-83af-4a37-8785-b3a547a4e220/access_as_user']
+  }
+};
+
+📌 5. Angular HTTP Interceptor (Final Working Version)
+export const msalInterceptor: HttpInterceptorFn = (req, next) => {
+  const auth = inject(AuthService);
+
+  return from(auth.getToken()).pipe(
+    switchMap((res) => {
+      if (res?.accessToken) {
+        req = req.clone({
+          setHeaders: {
+            Authorization: `Bearer ${res.accessToken}`,
+          },
+        });
+      }
+      return next(req);
+    })
+  );
+};
+
+📌 6. .NET 8 API Authentication
+Program.cs (Final Production Version)
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = $"https://login.microsoftonline.com/{tenantId}/v2.0";
+
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuers = new[]
+            {
+                $"https://sts.windows.net/{tenantId}/",
+                $"https://login.microsoftonline.com/{tenantId}/v2.0"
+            },
+
+            ValidateAudience = true,
+            ValidAudience = audience
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("ApiScope", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireClaim("scp", "access_as_user");
+    });
+});
+
+Apply policy to secure endpoints
+app.MapGet("/tickets", ...)
+   .RequireAuthorization("ApiScope");
+
+app.MapPost("/tickets", ...)
+   .RequireAuthorization("ApiScope");
+
+📌 7. Azure CORS Configuration
+
+Azure Portal → App Service → CORS
+
+Add allowed origins:
+
+https://salmon-rock-08a479500.3.azurestaticapps.net
+
+
+Enable:
+
+✔ Access-Control-Allow-Credentials
+
+📌 8. Expected Token Structure
+
+Your JWT must contain:
+
+{
+  "aud": "api://<API_CLIENT_ID>",
+  "scp": "access_as_user",
+  "tid": "<TENANT_ID>",
+  "appid": "<UI_CLIENT_ID>"
+}
+
+
+If these claims are present, your API will authorize the request.
+
+📌 9. Troubleshooting Summary
+Issue	Root Cause	Fix
+401 Unauthorized	Wrong audience or issuer	Fixed Key Vault + Program.cs
+403 Forbidden	Scope mismatched	Recreated access_as_user correctly
+Token shows ver: 1.0	Normal for personal accounts	Added sts.windows.net issuer
+Admin Consent disabled	Normal for MSA	No action required
+UI gets token but API rejects	Wrong MSAL config	Fixed scopes + authority
+
+🔐 Final Authentication Flow (Simple & Clear)
+
+1️⃣ User logs in through the Angular UI using Azure AD’s MSAL login screen.
+2️⃣ MSAL acquires an access token (a JWT) containing:
+
+issuer (iss) → who issued it
+
+audience (aud) → which API it is meant for
+
+scopes (scp) → what permissions the user has
+
+3️⃣ Angular automatically attaches this token to every API request using the MSAL Interceptor:
+
+Authorization: Bearer <access_token>
+
+
+4️⃣ API receives the request and validates the token by checking:
+
+✔ issuer matches your Azure AD tenant
+
+✔ audience matches your API's Application ID URI
+
+✔ scope contains access_as_user
+
+5️⃣ If all checks pass → API returns the response normally.
+If any check fails → API returns 401/403 (unauthorized/forbidden).

@@ -404,3 +404,15 @@ Here is what you achieved:
 ✔ Production logging and debugging
 
 This is exactly what high-paying companies test in system design + cloud interviews.
+
+Why Service Bus?
+----------------
+✔ Guaranteed delivery (messages never lost)
+✔ Automatic retries + DLQ
+✔ Decouples API from background processing
+✔ Independent auto-scaling of workers
+✔ Handles spikes smoothly with buffering
+✔ Supports high parallelism safely
+✔ Zero work lost during API restarts
+✔ Enterprise-grade reliability
+

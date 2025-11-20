@@ -63,14 +63,17 @@ builder.Services.AddSingleton<SasReadService>();
 // --------------------------------------------------------
 // CORS
 // --------------------------------------------------------
-builder.Services.AddCors(o =>
+builder.Services.AddCors(options =>
 {
-    o.AddPolicy("AllowTinyTicketsUi", p =>
-        p.WithOrigins("https://salmon-rock-08a479500.3.azurestaticapps.net")
-         .AllowAnyMethod()
-         .AllowAnyHeader()
-         .AllowCredentials());
+    options.AddPolicy("AllowTinyTicketsUi", policy =>
+        policy
+            .WithOrigins("https://salmon-rock-08a479500.3.azurestaticapps.net")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()
+    );
 });
+
 
 // --------------------------------------------------------
 // Azure AD Auth
@@ -134,7 +137,7 @@ app.UseAuthorization();
 
 // List tickets
 app.MapGet("/tickets", async (AppDbContext db)
-    => await db.Tickets.ToListAsync()).RequireAuthorization("ApiScope");
+    => await db.Tickets.ToListAsync());
 
 // Create ticket
 app.MapPost("/tickets", async (AppDbContext db, Ticket body, ServiceBusSender sb) =>
@@ -147,7 +150,7 @@ app.MapPost("/tickets", async (AppDbContext db, Ticket body, ServiceBusSender sb
         System.Text.Json.JsonSerializer.Serialize(body)));
 
     return Results.Ok(body);
-}).RequireAuthorization("ApiScope");
+});
 
 // Publish
 app.MapPost("/tickets/{id}/publish", async (int id, AppDbContext db, ServiceBusSender sb) =>
@@ -159,12 +162,12 @@ app.MapPost("/tickets/{id}/publish", async (int id, AppDbContext db, ServiceBusS
         System.Text.Json.JsonSerializer.Serialize(ticket)));
 
     return Results.Ok(new { published = true });
-}).RequireAuthorization("ApiScope");
+});
 
 // SAS Upload
 app.MapPost("/storage/sas-upload", (SasRequest req, SasTokenService sas) =>
     Results.Ok(new { uploadUrl = sas.GenerateUploadSas(req.Container, req.FileName) })
-).RequireAuthorization("ApiScope");
+);
 
 // Save metadata
 app.MapPost("/storage/save-metadata", async (UploadedFile file, AppDbContext db) =>
@@ -173,7 +176,7 @@ app.MapPost("/storage/save-metadata", async (UploadedFile file, AppDbContext db)
     db.UploadedFiles.Add(file);
     await db.SaveChangesAsync();
     return Results.Ok(file);
-}).RequireAuthorization("ApiScope");
+});
 
 // List files
 app.MapGet("/storage/files", async (AppDbContext db, SasReadService sas) =>
@@ -192,7 +195,7 @@ app.MapGet("/storage/files", async (AppDbContext db, SasReadService sas) =>
         f.UploadedOn,
         url = sas.GetReadUrl(f.Container, f.BlobName)
     }));
-}).RequireAuthorization("ApiScope");
+});
 
 // Delete
 app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db) =>
@@ -208,7 +211,7 @@ app.MapDelete("/storage/files/{id}", async (int id, AppDbContext db) =>
     await db.SaveChangesAsync();
 
     return Results.Ok(new { deleted = true });
-}).RequireAuthorization("ApiScope");
+});
 
 app.Use(async (ctx, next) =>
 {
@@ -218,4 +221,13 @@ app.Use(async (ctx, next) =>
 
     await next();
 });
+app.Use(async (ctx, next) =>
+{
+    Console.WriteLine("HEADERS RECEIVED:");
+    foreach (var h in ctx.Request.Headers)
+        Console.WriteLine($"{h.Key}: {h.Value}");
+
+    await next.Invoke();
+});
+
 app.Run();
